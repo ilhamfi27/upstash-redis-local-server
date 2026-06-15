@@ -1,0 +1,107 @@
+---
+title: API Introduction
+description: Upstash-compatible REST API overview, request formats, and response conventions.
+---
+
+Upstash Redis Local implements the [Upstash REST API](https://upstash.com/docs/redis/features/restapi) specification. If your code works with Upstash Cloud, it works locally.
+
+**Base URL:** `http://localhost:8000`
+
+## Request formats
+
+<Tabs>
+  <Tab title="Path-based">
+    Redis commands as URL path segments:
+
+    ```
+    GET /COMMAND/arg1/arg2/.../argN
+    ```
+
+    Examples:
+
+    ```bash
+    GET /PING
+    GET /SET/foo/bar
+    GET /SET/foo/bar/EX/3600
+    GET /HGET/user:1/email
+    GET /MGET/key1/key2/key3
+    ```
+  </Tab>
+  <Tab title="POST body">
+    Send the full command as a JSON array to `/`:
+
+    ```bash
+    POST /
+    Authorization: Bearer local-dev-token
+    Content-Type: application/json
+
+    ["SET", "foo", "bar", "EX", 3600]
+    ```
+  </Tab>
+  <Tab title="POST value">
+    Send large/binary values in the request body. Body is appended as the last argument:
+
+    ```bash
+    POST /SET/foo?EX=3600
+    Content-Type: application/json
+
+    my-value-here
+    ```
+  </Tab>
+</Tabs>
+
+## Response format
+
+Success:
+
+```json
+{ "result": "PONG" }
+```
+
+Error:
+
+```json
+{ "error": "ERR wrong number of arguments for 'get' command" }
+```
+
+## HTTP status codes
+
+| Code | Meaning |
+| --- | --- |
+| 200 | Command executed successfully |
+| 400 | Syntax error or command failure |
+| 401 | Missing or invalid token |
+| 405 | Unsupported HTTP method |
+| 429 | Rate limit exceeded (simulator mode) |
+| 503 | Redis connection failed |
+
+## Supported HTTP methods
+
+`GET`, `POST`, `PUT`, `HEAD`
+
+## Response encoding headers
+
+| Header | Values | Description |
+| --- | --- | --- |
+| `Upstash-Encoding` | `base64` | Encode string values as base64 |
+| `Upstash-Response-Format` | `json` (default), `resp2` | JSON or raw RESP2 bytes |
+
+## CORS
+
+All origins are allowed. Preflight `OPTIONS` requests return 204.
+
+Browser and edge runtime apps can call the API directly during development.
+
+## Endpoint overview
+
+| Endpoint | Description |
+| --- | --- |
+| `/` | Single command via POST body |
+| `/pipeline` | Batch commands (non-atomic) |
+| `/multi-exec` | Atomic transactions |
+| `/publish/:channel/:msg` | Publish to channel |
+| `/subscribe/:channel` | Subscribe via SSE |
+| `/monitor` | Redis MONITOR via SSE |
+| `/health` | Health check (no auth) |
+| `/dashboard` | Usage dashboard UI |
+| `/*` | Any Redis command as path |

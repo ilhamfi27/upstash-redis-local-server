@@ -1,0 +1,80 @@
+---
+title: Health
+description: Health check and readiness endpoints for Docker and load balancers.
+---
+
+Health endpoints require **no authentication**.
+
+## GET /health
+
+Check server and Redis connectivity:
+
+```bash
+curl http://localhost:8000/health
+```
+
+**Healthy:**
+
+```json
+{
+  "status": "healthy",
+  "redis": "connected"
+}
+```
+
+HTTP **200**
+
+**Unhealthy** (Redis unreachable):
+
+```json
+{
+  "status": "unhealthy",
+  "redis": "connection refused"
+}
+```
+
+HTTP **503**
+
+## GET /ready
+
+Alias for `/health`. Same response.
+
+## Docker healthcheck
+
+Built into `docker-compose.yml`:
+
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+  interval: 10s
+  timeout: 5s
+  retries: 3
+```
+
+Verify container health:
+
+```bash
+docker ps
+# STATUS: Up X minutes (healthy)
+```
+
+## Use in CI
+
+```yaml
+- name: Wait for server
+  run: |
+    for i in {1..30}; do
+      curl -sf http://localhost:8000/health && break
+      sleep 1
+    done
+```
+
+## Related endpoints (no auth)
+
+| Endpoint | Auth required |
+| --- | --- |
+| `/health` | No |
+| `/ready` | No |
+| `/dashboard` | No (UI only) |
+| `/dashboard/api/stats` | No |
+| All Redis commands | Yes |

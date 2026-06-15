@@ -1,0 +1,124 @@
+---
+title: Switch from Cloud
+description: Point your app at local Upstash Redis and stop burning cloud quota during development.
+---
+
+The most common reason to use Upstash Redis Local is **escaping cloud rate limits**. Every request to Upstash Cloud counts against your daily quota. Local dev with hot reload, test suites, and seed scripts can exhaust the free tier in minutes.
+
+## The problem
+
+| Scenario | Cloud impact |
+| --- | --- |
+| Hot reload in Next.js | Hundreds of Redis calls per save |
+| Integration test suite | Thousands of SET/GET per run |
+| CI pipeline | Every build burns quota |
+| Accidental prod credentials in `.env` | Real data + real billing |
+
+## The solution
+
+Change two environment variables. Keep everything else identical.
+
+<CodeGroup>
+
+```bash .env.local
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+```
+
+```typescript Next.js
+import { Redis } from '@upstash/redis'
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
+```
+
+</CodeGroup>
+
+<Note>
+  Your SDK code stays **exactly the same**. Only the URL and token change.
+</Note>
+
+## Using the CLI env switcher
+
+```bash
+make build-cli
+
+# Switch to local (unlimited)
+./bin/upstash-local use dev
+
+# Switch back to cloud
+./bin/upstash-local use cloud   # requires .env.cloud file
+
+# Check active profile
+./bin/upstash-local status
+```
+
+The `use dev` command writes `.env.local`:
+
+```bash
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+UPSTASH_REDIS_REST_READONLY_TOKEN=local-readonly-token
+```
+
+For cloud, create `.env.cloud` first:
+
+```bash
+UPSTASH_REDIS_REST_URL=https://your-instance.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-cloud-token
+```
+
+## Recommended project structure
+
+```
+my-app/
+├── .env.local          ← local (gitignored)
+├── .env.cloud          ← cloud credentials (gitignored)
+├── .env.example        ← template without secrets
+└── src/
+```
+
+**.env.example:**
+
+```bash
+# Local dev — unlimited, no rate limits
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+
+# Production — uncomment and use Upstash Console values
+# UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+# UPSTASH_REDIS_REST_TOKEN=your-token
+```
+
+## Cloud vs local comparison
+
+| | Cloud | Local |
+| --- | --- | --- |
+| Daily quota | 10,000/day (free) | Unlimited |
+| Cost per request | Yes (paid tier) | Free |
+| Rate limiting | Yes | None (optional simulator) |
+| Data isolation | Shared instance | Your machine only |
+| HTTPS | Yes | HTTP localhost |
+| Best for | Production | Dev, test, CI |
+
+## CI/CD tip
+
+Run Upstash Redis Local in GitHub Actions — zero cloud quota in pipelines:
+
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+
+steps:
+  - run: go build -o server . && ./server --redis localhost:6379 &
+  - run: npm test
+    env:
+      UPSTASH_REDIS_REST_URL: http://localhost:8000
+      UPSTASH_REDIS_REST_TOKEN: local-dev-token
+```
+
+See [automated testing](/testing/automated) for the full CI setup.

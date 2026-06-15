@@ -1,0 +1,54 @@
+name: Integration Test
+
+on:
+  push:
+    branches: [main, master, fix/*]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Start Redis
+        run: docker run -d --name redis-test -p 6379:6379 redis:7-alpine
+
+      - name: Build and run server
+        run: |
+          go build -o bin/upstash-redis-local .
+          ./bin/upstash-redis-local --redis localhost:6379 --token local-dev-token --addr :8000 &
+          sleep 2
+
+      - name: Test health endpoint
+        run: curl -sf http://localhost:8000/health
+
+      - name: Test PING
+        run: curl -sf -H "Authorization: Bearer local-dev-token" http://localhost:8000/PING
+
+      - name: Test pipeline
+        run: |
+          curl -sf -X POST http://localhost:8000/pipeline \
+            -H "Authorization: Bearer local-dev-token" \
+            -H "Content-Type: application/json" \
+            -d '[["SET","ci-test","ok"],["GET","ci-test"]]'
+
+      - name: Test multi-exec
+        run: |
+          curl -sf -X POST http://localhost:8000/multi-exec \
+            -H "Authorization: Bearer local-dev-token" \
+            -H "Content-Type: application/json" \
+            -d '[["SET","tx-test","val"],["GET","tx-test"]]'
+
+      - name: Test dashboard stats
+        run: curl -sf http://localhost:8000/dashboard/api/stats
+
+      - name: Run unit tests
+        run: go test -v ./...

@@ -1,0 +1,111 @@
+---
+title: Docker Installation
+description: Install and run Upstash Redis Local with Docker Compose or standalone containers.
+---
+
+Docker is the recommended way to run Upstash Redis Local.
+
+## One-command start
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+The script will:
+1. Check Docker is running (starts Docker Desktop on Windows/macOS if needed)
+2. Detect port conflicts on 6379
+3. Start the appropriate Compose profile
+4. Print URLs for API, dashboard, and health
+
+## Docker Compose (default)
+
+Starts bundled Redis 7 + the REST proxy:
+
+```bash
+docker compose up -d
+```
+
+Services:
+
+| Service | Port | Description |
+| --- | --- | --- |
+| `redis` | 6379 | Redis 7 Alpine with persistence |
+| `upstash-local` | 8000 | REST API proxy |
+
+### Environment variables
+
+Copy `.env.example` to `.env`:
+
+```bash
+UPSTASH_TOKEN=local-dev-token
+UPSTASH_READONLY_TOKEN=local-readonly-token
+REDIS_PORT=6379
+UPSTASH_PORT=8000
+```
+
+## Docker Compose profiles
+
+<Tabs>
+  <Tab title="Default">
+    Bundled Redis + proxy. Use when nothing is running on port 6379.
+
+    ```bash
+    docker compose up -d
+    ```
+  </Tab>
+  <Tab title="External">
+    Proxy only — connects to Redis already running on your host. Fixes port 6379 conflicts.
+
+    ```bash
+    docker compose --profile external up -d upstash-local-external
+    ```
+  </Tab>
+  <Tab title="Redis Stack">
+    Redis Stack with JSON module support + proxy.
+
+    ```bash
+    docker compose --profile stack up -d
+    ```
+  </Tab>
+</Tabs>
+
+See [Docker profiles guide](/guides/docker-profiles) for details.
+
+## Standalone Docker run
+
+```bash
+# Start Redis
+docker run -d --name redis-local -p 6379:6379 redis:7-alpine
+
+# Start proxy (connect to host Redis)
+docker run -d --name upstash-local -p 8000:8000 \
+  -e REDIS_ADDR=host.docker.internal:6379 \
+  -e UPSTASH_TOKEN=local-dev-token \
+  upstash-redis-local-upstash-local-external
+```
+
+## Health check
+
+```bash
+curl http://localhost:8000/health
+```
+
+Docker Compose includes a built-in healthcheck on `/health`.
+
+## Stop and clean up
+
+```bash
+docker compose down
+docker compose down -v   # also remove Redis data volume
+```
+
+## Pull from registry
+
+```bash
+docker pull aine1100/upstash-redis-local:latest
+```
+
+<Warning>
+  On Windows, use **Git Bash** for curl commands with JSON bodies. PowerShell's `curl` alias breaks POST requests.
+</Warning>

@@ -1,0 +1,97 @@
+---
+title: Rate Limits
+description: Unlimited local requests and optional cloud rate-limit simulation for testing.
+---
+
+## Unlimited by default
+
+Upstash Redis Local has **no request limits**. Every command is free and unlimited — that's the whole point.
+
+Use it freely for:
+- Hot reload development
+- Load testing
+- Integration test suites
+- Data seeding scripts
+- CI pipelines
+
+## Why this matters
+
+Upstash Cloud free tier: **10,000 commands/day**.
+
+A typical dev session:
+
+| Action | Approx. commands |
+| --- | --- |
+| Next.js hot reload (10 saves) | 500–2,000 |
+| Jest test suite (50 tests) | 1,000–5,000 |
+| Seed script (1,000 keys) | 1,000+ |
+| **Total** | **Can exceed free tier in one session** |
+
+Locally: **0 cloud commands used**.
+
+## Rate-limit simulator
+
+Test how your app handles Upstash limits **without touching cloud**:
+
+```bash
+./bin/upstash-redis-local \
+  --redis localhost:6379 \
+  --simulate-quota 10000 \
+  --simulate-rps 100
+```
+
+Or via environment variables:
+
+```bash
+SIMULATE_QUOTA=10000
+SIMULATE_RPS=100
+```
+
+| Flag | Description |
+| --- | --- |
+| `--simulate-quota N` | Reject requests after N total commands (mimics daily quota) |
+| `--simulate-rps N` | Reject requests exceeding N requests per second |
+
+When a limit is hit, the server returns **HTTP 429**:
+
+```json
+{"error":"ERR daily request quota exceeded (simulated Upstash free tier limit)"}
+```
+
+## Test the simulator
+
+```bash
+# Start with quota of 5
+./bin/upstash-redis-local --redis localhost:6379 --simulate-quota 5
+
+# Hammer it
+for i in {1..10}; do
+  curl -s -H "Authorization: Bearer upstash" http://localhost:8000/PING
+  echo ""
+done
+```
+
+First 5 succeed. Requests 6–10 return 429.
+
+## Build retry logic
+
+Use the simulator to verify your app's fallback:
+
+```typescript
+async function getWithRetry(key: string, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await redis.get(key)
+    } catch (err) {
+      if (i === retries - 1) throw err
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)))
+    }
+  }
+}
+```
+
+Run against `--simulate-quota 3` to trigger retries locally.
+
+## Dashboard tracking
+
+The [dashboard](/guides/dashboard) shows `quota_saved` — the number of requests that would have counted against your Upstash Cloud quota.

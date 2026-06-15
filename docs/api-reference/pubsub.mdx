@@ -1,0 +1,79 @@
+---
+title: Pub/Sub
+description: Publish and subscribe to Redis channels via REST and Server-Sent Events.
+---
+
+Pub/Sub endpoints mirror [Upstash Cloud's pub/sub REST API](https://upstash.com/docs/redis/features/restapi#subscribe--publish-commands).
+
+## Publish
+
+**Endpoint:** `POST /publish/{channel}/{message}`
+
+```bash
+curl -X POST http://localhost:8000/publish/chat/hello-world \
+  -H "Authorization: Bearer local-dev-token"
+```
+
+Message can contain slashes — everything after the channel name is the message:
+
+```bash
+# PUBLISH chat "hello/world/today"
+curl -X POST http://localhost:8000/publish/chat/hello/world/today \
+  -H "Authorization: Bearer local-dev-token"
+```
+
+Response:
+
+```json
+{ "result": 1 }
+```
+
+`result` is the number of subscribers that received the message.
+
+## Subscribe (SSE)
+
+**Endpoint:** `POST /subscribe/{channel}`
+
+Opens a Server-Sent Events stream:
+
+```bash
+curl -N \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Accept: text/event-stream" \
+  -X POST http://localhost:8000/subscribe/chat
+```
+
+Stream output:
+
+```
+data: subscribe,chat,1
+
+data: message,chat,hello-world
+
+data: message,chat,how are you?
+```
+
+## Two-terminal test
+
+**Terminal 1 — subscribe:**
+
+```bash
+curl -N -H "Authorization: Bearer local-dev-token" \
+  -H "Accept: text/event-stream" \
+  -X POST http://localhost:8000/subscribe/mychat
+```
+
+**Terminal 2 — publish:**
+
+```bash
+curl -X POST http://localhost:8000/publish/mychat/hello \
+  -H "Authorization: Bearer local-dev-token"
+```
+
+Terminal 1 should immediately show the message event.
+
+## Notes
+
+- Subscribe uses a dedicated Redis connection for the duration of the stream
+- Connection closes when the client disconnects
+- Works locally without cloud pub/sub quota limits

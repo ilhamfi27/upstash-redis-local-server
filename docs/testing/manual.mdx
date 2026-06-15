@@ -1,0 +1,359 @@
+---
+title: Manual Testing
+description: Step-by-step guide to verify every feature of Upstash Redis Local with success checks.
+---
+
+Run this checklist after installation or any code change. Each step includes the command, the **expected success output**, and a check you can mark when it passes.
+
+<Tip>
+  Use **Git Bash** on Windows for curl commands with JSON bodies. PowerShell's `curl` alias breaks POST requests.
+</Tip>
+
+## Prerequisites
+
+Server running:
+
+```bash
+./start.sh
+# or
+docker compose up -d
+```
+
+Confirm the container is healthy:
+
+```bash
+docker ps
+# STATUS should show (healthy) on port 8000
+```
+
+---
+
+## Batch 1 — Basics
+
+<Steps>
+  <Step title="Health check ✅">
+    ```bash
+    curl http://localhost:8000/health
+    ```
+
+    **Success — you should see:**
+    ```json
+    {"status":"healthy","redis":"connected"}
+    ```
+
+    ✅ HTTP 200 · Redis reachable · no auth required
+  </Step>
+  <Step title="PING ✅">
+    **Browser:**
+    ```
+    http://localhost:8000/PING?_token=local-dev-token
+    ```
+
+    **curl:**
+    ```bash
+    curl -H "Authorization: Bearer local-dev-token" http://localhost:8000/PING
+    ```
+
+    **Success — you should see:**
+    ```json
+    {"result":"PONG"}
+    ```
+
+    ✅ Authenticated request accepted · Redis responded
+  </Step>
+  <Step title="Unauthorized ✅">
+    ```bash
+    curl http://localhost:8000/PING
+    ```
+
+    **Success — you should see:**
+    ```json
+    {"error":"Unauthorised"}
+    ```
+
+    ✅ HTTP 401 · Requests without a token are rejected
+  </Step>
+  <Step title="CORS ✅">
+    Open DevTools console on any page and run:
+
+    ```javascript
+    fetch('http://localhost:8000/PING', {
+      headers: { Authorization: 'Bearer local-dev-token' }
+    }).then(r => r.json()).then(console.log)
+    ```
+
+    **Success — you should see:**
+    ```
+    { result: "PONG" }
+    ```
+
+    ✅ No CORS error in console · Browser can call the API
+  </Step>
+</Steps>
+
+---
+
+## Batch 2 — REST API
+
+<Steps>
+  <Step title="SET / GET ✅">
+    ```bash
+    curl -H "Authorization: Bearer local-dev-token" \
+      http://localhost:8000/SET/testkey/hello
+
+    curl -H "Authorization: Bearer local-dev-token" \
+      http://localhost:8000/GET/testkey
+    ```
+
+    **Success — you should see:**
+    ```json
+    {"result":"OK"}
+    {"result":"hello"}
+    ```
+
+    ✅ Write succeeded · Read returned the same value
+  </Step>
+  <Step title="Pipeline ✅">
+    ```bash
+    curl -X POST http://localhost:8000/pipeline \
+      -H "Authorization: Bearer local-dev-token" \
+      -H "Content-Type: application/json" \
+      -d '[["SET","p1","a"],["GET","p1"]]'
+    ```
+
+    **Success — you should see:**
+    ```json
+    [{"result":"OK"},{"result":"a"}]
+    ```
+
+    ✅ Both commands ran in one HTTP request · results in order
+  </Step>
+  <Step title="Multi-exec ✅">
+    ```bash
+    curl -X POST http://localhost:8000/multi-exec \
+      -H "Authorization: Bearer local-dev-token" \
+      -H "Content-Type: application/json" \
+      -d '[["SET","tx1","val"],["GET","tx1"]]'
+    ```
+
+    **Success — you should see:**
+    ```json
+    [{"result":"OK"},{"result":"val"}]
+    ```
+
+    ✅ Atomic transaction · SET and GET both committed
+  </Step>
+  <Step title="Read-only token ✅">
+    ```bash
+    # Should succeed — read allowed
+    curl -H "Authorization: Bearer local-readonly-token" \
+      http://localhost:8000/GET/testkey
+
+    # Should fail — write blocked
+    curl -H "Authorization: Bearer local-readonly-token" \
+      http://localhost:8000/SET/readonly-test/val
+    ```
+
+    **Success — you should see:**
+    ```json
+    {"result":"hello"}
+    {"error":"NOPERM this user has no permissions to run the 'SET' command"}
+    ```
+
+    ✅ Read works · Write blocked with NOPERM
+  </Step>
+  <Step title="Base64 encoding ✅">
+    ```bash
+    curl -H "Authorization: Bearer local-dev-token" \
+      -H "Upstash-Encoding: base64" \
+      http://localhost:8000/GET/testkey
+    ```
+
+    **Success — you should see:**
+    ```json
+    {"result":"aGVsbG8="}
+    ```
+
+    ✅ Value encoded as base64 (`hello` → `aGVsbG8=`)
+  </Step>
+</Steps>
+
+---
+
+## Batch 3 — Dashboard & limits
+
+<Steps>
+  <Step title="Dashboard UI ✅">
+    Open: [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
+
+    **Success — you should see:**
+    - Total Requests card with a number
+    - Cloud Quota Saved card (same count)
+    - Free Tier Limit showing `10000/day`
+    - Key browser table after clicking **Browse Keys** with pattern `*`
+
+    ✅ Stats load · Keys list appears with token `local-dev-token`
+  </Step>
+  <Step title="Stats API ✅">
+    ```bash
+    curl http://localhost:8000/dashboard/api/stats
+    ```
+
+    **Success — you should see:**
+    ```json
+    {
+      "total_requests": 15,
+      "quota_saved": 15,
+      "free_tier_quota": 10000,
+      "cloud_quota_remaining": 9985,
+      "unlimited_local": true,
+      "commands": { "GET": 6, "SET": 5, "PING": 3 },
+      "uptime_seconds": 2177
+    }
+    ```
+
+    ✅ Numbers increase after running more commands · `unlimited_local: true`
+  </Step>
+  <Step title="Rate limit simulator ✅">
+    Restart with a quota of 5:
+
+    ```bash
+    docker compose --profile external run --rm -p 8000:8000 \
+      -e REDIS_ADDR=host.docker.internal:6379 \
+      upstash-local-external \
+      --redis host.docker.internal:6379 --simulate-quota 5
+    ```
+
+    Hammer with 10 requests (Git Bash):
+
+    ```bash
+    for i in {1..10}; do
+      curl -s -o /dev/null -w "Request $i: HTTP %{http_code}\n" \
+        -H "Authorization: Bearer local-dev-token" \
+        http://localhost:8000/PING
+    done
+    ```
+
+    **Success — you should see:**
+    ```
+    Request 1: HTTP 200
+    Request 2: HTTP 200
+    Request 3: HTTP 200
+    Request 4: HTTP 200
+    Request 5: HTTP 200
+    Request 6: HTTP 429
+    Request 7: HTTP 429
+    ...
+    ```
+
+    ✅ First 5 succeed · rest return HTTP 429 (simulated cloud quota)
+  </Step>
+  <Step title="Pub/Sub ✅">
+    **Terminal 1 — subscribe:**
+    ```bash
+    curl -N -H "Authorization: Bearer local-dev-token" \
+      -H "Accept: text/event-stream" \
+      -X POST http://localhost:8000/subscribe/mychat
+    ```
+
+    **Terminal 2 — publish:**
+    ```bash
+    curl -X POST http://localhost:8000/publish/mychat/hello \
+      -H "Authorization: Bearer local-dev-token"
+    ```
+
+    **Success — Terminal 1 should show:**
+    ```
+    data: subscribe,mychat,1
+
+    data: message,mychat,hello
+    ```
+
+    ✅ SSE stream opens · published message arrives in real time
+  </Step>
+</Steps>
+
+---
+
+## Batch 4 — CLI & SDK
+
+<Steps>
+  <Step title="CLI ✅">
+    ```bash
+    make build-cli
+    ./bin/upstash-local ping
+    ./bin/upstash-local use dev
+    ./bin/upstash-local seed --keys 10 --prefix test:
+    ./bin/upstash-local export --pattern "test:*" --output dump.json
+    ```
+
+    **Success — you should see:**
+    ```
+    ✅ http://localhost:8000 → {"result":"PONG"}
+    ✅ Switched to LOCAL dev profile
+    ✅ Seeded 10 keys (HTTP 200)
+    ✅ Exported N keys to dump.json
+    ```
+
+    ✅ `.env.local` created · keys seeded · JSON export written
+  </Step>
+  <Step title="@upstash/redis SDK ✅">
+    ```bash
+    npm init -y && npm install @upstash/redis
+    ```
+
+    ```javascript
+    // test.mjs
+    import { Redis } from '@upstash/redis'
+
+    const redis = new Redis({
+      url: 'http://localhost:8000',
+      token: 'local-dev-token',
+    })
+
+    await redis.set('sdk', 'works')
+    console.log(await redis.get('sdk'))
+    ```
+
+    ```bash
+    node test.mjs
+    ```
+
+    **Success — you should see:**
+    ```
+    works
+    ```
+
+    ✅ SDK talks to local server · no cloud URL needed
+  </Step>
+</Steps>
+
+---
+
+## Final checklist
+
+Mark each item when the success output above matches your result.
+
+| Feature | Success check | Status |
+| --- | --- | --- |
+| `/health` | `{"status":"healthy","redis":"connected"}` | ✅ |
+| PING with token | `{"result":"PONG"}` | ✅ |
+| Unauthorized | HTTP 401 + `"Unauthorised"` | ✅ |
+| SET / GET | `"OK"` then correct value | ✅ |
+| Dashboard UI | Stats cards + key browser | ✅ |
+| Stats API | `unlimited_local: true` | ✅ |
+| Pipeline | Array of `{result}` objects | ✅ |
+| Multi-exec | Atomic SET + GET results | ✅ |
+| Read-only token | GET ok · SET returns NOPERM | ✅ |
+| Base64 encoding | Base64 string in result | ✅ |
+| CLI seed/export | Files created · HTTP 200 | ✅ |
+| Pub/Sub SSE | `data: message,...` in stream | ✅ |
+| SDK integration | `works` printed | ✅ |
+
+<Note>
+  All checks above were verified against a running local server. Your `total_requests` and `uptime_seconds` values will differ — that is expected.
+</Note>
+
+## If a check fails
+
+See [Troubleshooting](/troubleshooting) for port conflicts, auth errors, and Windows curl issues.
