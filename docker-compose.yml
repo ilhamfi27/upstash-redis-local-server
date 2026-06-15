@@ -1,12 +1,19 @@
-# Docker Compose for local development
-# Usage: docker-compose up -d
+# Docker Compose profiles for upstash-redis-local
+#
+# Default (bundled Redis):
+#   docker compose up -d
+#
+# Use existing Redis on host (avoids port 6379 conflict):
+#   docker compose --profile external up -d upstash-local-external
+#
+# Redis Stack (JSON module support):
+#   docker compose --profile stack up -d
 
 services:
-  # Redis server
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -16,18 +23,75 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Upstash Redis Local server
   upstash-local:
     build: .
     ports:
-      - "8000:8000"
+      - "${UPSTASH_PORT:-8000}:8000"
     environment:
       - REDIS_ADDR=redis:6379
-      - UPSTASH_TOKEN=local-dev-token
+      - UPSTASH_TOKEN=${UPSTASH_TOKEN:-local-dev-token}
+      - UPSTASH_READONLY_TOKEN=${UPSTASH_READONLY_TOKEN:-local-readonly-token}
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
+
+  redis-stack:
+    image: redis/redis-stack-server:latest
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_stack_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    profiles: ["stack"]
+
+  upstash-local-stack:
+    build: .
+    ports:
+      - "${UPSTASH_PORT:-8000}:8000"
+    environment:
+      - REDIS_ADDR=redis-stack:6379
+      - UPSTASH_TOKEN=${UPSTASH_TOKEN:-local-dev-token}
+      - UPSTASH_READONLY_TOKEN=${UPSTASH_READONLY_TOKEN:-local-readonly-token}
+    depends_on:
+      redis-stack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    profiles: ["stack"]
+
+  upstash-local-external:
+    build: .
+    ports:
+      - "${UPSTASH_PORT:-8000}:8000"
+    environment:
+      - REDIS_ADDR=${REDIS_ADDR:-host.docker.internal:6379}
+      - UPSTASH_TOKEN=${UPSTASH_TOKEN:-local-dev-token}
+      - UPSTASH_READONLY_TOKEN=${UPSTASH_READONLY_TOKEN:-local-readonly-token}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    profiles: ["external"]
 
 volumes:
   redis_data:
+  redis_stack_data:

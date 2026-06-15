@@ -1,0 +1,76 @@
+---
+title: Multi-Exec
+description: Execute multiple Redis commands atomically inside a MULTI/EXEC transaction.
+---
+
+Multi-Exec runs commands inside a Redis `MULTI`/`EXEC` block. All commands execute atomically — no other client can interleave.
+
+**Endpoint:** `POST /multi-exec`
+
+## Request
+
+```bash
+curl -X POST http://localhost:8000/multi-exec \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[
+    ["SET", "key1", "valuex"],
+    ["SETEX", "key2", 13, "valuez"],
+    ["GET", "key1"],
+    ["INCR", "counter"]
+  ]'
+```
+
+## Response
+
+```json
+[
+  { "result": "OK" },
+  { "result": "OK" },
+  { "result": "valuex" },
+  { "result": 1 }
+]
+```
+
+Individual command errors appear in results (Redis continues executing remaining commands, same as native Redis transactions):
+
+```json
+[
+  { "result": "OK" },
+  { "error": "ERR value is not an int or out of range" },
+  { "result": 2 }
+]
+```
+
+## Pipeline vs Multi-Exec
+
+| | Pipeline | Multi-Exec |
+| --- | --- | --- |
+| Atomic | No | **Yes** |
+| Endpoint | `/pipeline` | `/multi-exec` |
+| Interleaving | Possible | Not possible |
+| Use case | Throughput | Consistency |
+
+## Error cases
+
+Empty request:
+
+```json
+{"error":"ERR empty transaction request"}
+```
+
+Invalid JSON:
+
+```json
+{"error":"ERR failed to parse transaction request"}
+```
+
+## With @upstash/redis
+
+```typescript
+// The SDK uses multi-exec for transactional operations
+const result = await redis.multi()
+  .set('key1', 'val1')
+  .get('key1')
+  .exec()
+```

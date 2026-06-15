@@ -2,15 +2,23 @@
 
 > A local webserver for testing and development using [`@upstash/redis`](https://github.com/upstash/upstash-redis)
 
+📖 **[Full Documentation →](./docs/index.mdx)** | Preview locally: `cd docs && mint dev`
+
 ## 🤔 What is upstash-redis-local?
 
 The `upstash-redis-local` command starts a local web server that provides a REST API compatible with [Upstash REST API](https://docs.upstash.com/redis/features/restapi). It connects to a real Redis database instance, making it perfect for local development and testing.
 
 **Key Features:**
 - ✅ Compatible with `@upstash/redis` SDK
+- ✅ **Unlimited local requests** — no cloud rate limits or daily quotas
+- ✅ Full REST API: `/pipeline`, `/multi-exec`, `/publish`, `/subscribe`, `/monitor`
+- ✅ Read-only token support (like Upstash cloud)
+- ✅ Usage dashboard at `/dashboard` — see cloud quota saved
+- ✅ Rate-limit simulator (`--simulate-quota`, `--simulate-rps`)
+- ✅ CORS enabled for browser/edge dev
+- ✅ Docker Compose profiles: default, external Redis, Redis Stack
+- ✅ CLI tools: `upstash-local use dev`, seed, export, import
 - ✅ Connection pooling for reliability
-- ✅ Automatic retry on connection failures
-- ✅ Docker Compose for easy setup
 - ✅ Tiny Docker image (~10MB)
 
 This project is inspired by [upstashdis](https://github.com/mna/upstashdis) but uses `fasthttp` for better performance.
@@ -40,6 +48,67 @@ ENVIRONMENT VARIABLES:
     REDIS_ADDR     Redis server address (alternative to --redis)
     UPSTASH_ADDR   Webserver address (alternative to --addr)
     UPSTASH_TOKEN  API token (alternative to --token)
+```
+
+## 🚀 Quick Start
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+Then open:
+- **REST API:** http://localhost:8000/PING?_token=local-dev-token
+- **Dashboard:** http://localhost:8000/dashboard
+- **Health:** http://localhost:8000/health
+
+### Switch your app to local (no rate limits)
+
+```bash
+make build-cli
+./bin/upstash-local use dev
+# Point your app at .env.local — unlimited requests, zero cloud quota
+```
+
+See `.env.example` for cloud vs local profiles.
+
+## 📊 Dashboard & Rate Limit Tools
+
+Open **http://localhost:8000/dashboard** to see:
+- Total requests (unlimited locally)
+- **Cloud quota saved** vs Upstash free tier (10k/day)
+- Key browser
+
+Simulate cloud limits for testing fallback logic:
+
+```bash
+upstash-redis-local --simulate-quota 10000 --simulate-rps 100
+```
+
+## 🔧 CLI Commands
+
+```bash
+make build-cli
+./bin/upstash-local use dev      # Switch to local (unlimited)
+./bin/upstash-local use cloud    # Switch to cloud (.env.cloud required)
+./bin/upstash-local status       # Show active profile
+./bin/upstash-local seed --keys 1000 --prefix dev:
+./bin/upstash-local export --output dump.json
+./bin/upstash-local import --input dump.json
+./bin/upstash-local ping
+```
+
+## 🐳 Docker Compose Profiles
+
+```bash
+# Default — bundled Redis
+docker compose up -d
+
+# External Redis (when port 6379 already in use)
+docker compose --profile external up -d upstash-local-external
+
+# Redis Stack (JSON module support)
+docker compose --profile stack up -d
 ```
 
 ## ⬇ Installation

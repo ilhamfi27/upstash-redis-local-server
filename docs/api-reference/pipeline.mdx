@@ -1,0 +1,81 @@
+---
+title: Pipeline
+description: Send multiple Redis commands in a single HTTP request for better throughput.
+---
+
+Pipelines batch multiple commands into one HTTP request. Each command executes in order, but **not atomically** — other clients can interleave.
+
+**Endpoint:** `POST /pipeline`
+
+<Note>
+  Pipeline execution is not atomic. Use [Multi-Exec](/api-reference/multi-exec) for transactions.
+</Note>
+
+## Request
+
+```bash
+curl -X POST http://localhost:8000/pipeline \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[
+    ["SET", "key1", "valuex"],
+    ["SETEX", "key2", 13, "valuez"],
+    ["GET", "key1"],
+    ["ZADD", "myset", 11, "item1", 22, "item2"]
+  ]'
+```
+
+## Response
+
+Array of results in the same order:
+
+```json
+[
+  { "result": "OK" },
+  { "result": "OK" },
+  { "result": "valuex" },
+  { "result": 2 }
+]
+```
+
+Individual command errors appear inline:
+
+```json
+[
+  { "result": "OK" },
+  { "error": "ERR value is not an int or out of range" }
+]
+```
+
+## With @upstash/redis
+
+```typescript
+const pipe = redis.pipeline()
+pipe.set('a', '1')
+pipe.set('b', '2')
+pipe.get('a')
+const results = await pipe.exec()
+```
+
+## When to use pipeline
+
+<CardGroup cols={2}>
+  <Card title="Use pipeline" icon="check">
+    - Higher throughput needed
+    - Commands are independent
+    - Bulk seeding / imports
+  </Card>
+  <Card title="Use multi-exec" icon="lock">
+    - Atomicity required
+    - All-or-nothing semantics
+    - Transactional updates
+  </Card>
+</CardGroup>
+
+## CLI bulk operations
+
+The `upstash-local seed` and `import` commands use pipeline internally:
+
+```bash
+./bin/upstash-local seed --keys 1000 --prefix dev:
+```

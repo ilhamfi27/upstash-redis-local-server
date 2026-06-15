@@ -1,0 +1,115 @@
+---
+title: CLI Tools
+description: Seed data, export keys, switch environments, and test connectivity with upstash-local CLI.
+---
+
+The `upstash-local` CLI helps you manage local development workflows without writing scripts.
+
+## Install
+
+```bash
+make build-cli
+# Binary: ./bin/upstash-local
+```
+
+## Commands
+
+### `use dev` — switch to local
+
+Writes `.env.local` with localhost credentials:
+
+```bash
+./bin/upstash-local use dev
+```
+
+Output:
+```
+✅ Switched to LOCAL dev profile
+   URL:   http://localhost:8000
+   Token: local-dev-token
+   Unlimited requests — no cloud rate limits
+```
+
+### `use cloud` — switch to cloud
+
+Requires `.env.cloud` in your project root:
+
+```bash
+# Create .env.cloud first
+echo 'UPSTASH_REDIS_REST_URL=https://xxx.upstash.io' > .env.cloud
+echo 'UPSTASH_REDIS_REST_TOKEN=your-token' >> .env.cloud
+
+./bin/upstash-local use cloud
+```
+
+### `status` — show active profile
+
+```bash
+./bin/upstash-local status
+```
+
+### `ping` — test connection
+
+```bash
+./bin/upstash-local ping
+./bin/upstash-local ping http://localhost:8000
+```
+
+### `seed` — generate test data
+
+```bash
+./bin/upstash-local seed --keys 1000 --prefix dev:
+./bin/upstash-local seed --keys 50 --prefix test: --url http://localhost:8000
+```
+
+Uses the pipeline API to bulk-set keys. No cloud quota burned.
+
+### `export` — dump keys to JSON
+
+```bash
+./bin/upstash-local export --output dump.json
+./bin/upstash-local export --pattern "dev:*" --output dev-keys.json
+```
+
+Output format:
+
+```json
+{
+  "keys": [
+    { "key": "dev:key:1", "type": "string", "value": "value-1", "ttl": -1 }
+  ]
+}
+```
+
+### `import` — load keys from JSON
+
+```bash
+./bin/upstash-local import --input dump.json
+```
+
+## Common workflows
+
+<AccordionGroup>
+  <Accordion title="Fresh dev environment">
+    ```bash
+    ./start.sh
+    ./bin/upstash-local use dev
+    ./bin/upstash-local seed --keys 100 --prefix dev:
+    ./bin/upstash-local ping
+    ```
+  </Accordion>
+  <Accordion title="Migrate fixture data">
+    ```bash
+    ./bin/upstash-local export --pattern "fixture:*" --output fixtures.json
+    # share fixtures.json with team
+    ./bin/upstash-local import --input fixtures.json
+    ```
+  </Accordion>
+  <Accordion title="Switch before deploy">
+    ```bash
+    ./bin/upstash-local use cloud
+    npm run deploy
+    ./bin/upstash-local use dev   # back to local
+    ```
+  </Accordion>
+</AccordionGroup>

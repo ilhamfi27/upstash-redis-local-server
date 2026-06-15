@@ -24,8 +24,8 @@ LABEL org.opencontainers.image.title="upstash-redis-local"
 LABEL org.opencontainers.image.description="A local server that mimics upstash-redis for local testing"
 LABEL org.opencontainers.image.source="https://github.com/aine1100/Upstash-Redis-Local-server"
 
-# Install ca-certificates for HTTPS requests
-RUN apk add --no-cache ca-certificates
+# Install ca-certificates and wget for healthchecks
+RUN apk add --no-cache ca-certificates wget
 
 # Copy binary from builder
 COPY --from=builder /app/upstash-redis-local /usr/local/bin/

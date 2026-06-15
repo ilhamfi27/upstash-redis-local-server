@@ -25,6 +25,18 @@ build: deps
 	@echo "> Binary has been built successfully"
 
 
+.PHONY: build-cli
+build-cli: deps
+	@echo "> Building upstash-local CLI"
+	go build -o ${BUILD_DIR}/upstash-local ./cmd/upstash-local
+
+.PHONY: test
+test:
+	go test -v ./...
+
+.PHONY: build-all
+build-all: build build-cli
+
 .PHONY: run
 run: build
 	@echo "> Running ${PROJECT_NAME}"

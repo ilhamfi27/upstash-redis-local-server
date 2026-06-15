@@ -1,0 +1,114 @@
+---
+title: Quickstart
+description: Deploy Upstash Redis Local in minutes and make your first request.
+---
+
+Get a fully working local Upstash-compatible Redis server in under two minutes.
+
+## Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- Git Bash (Windows), or any Unix shell
+
+## Step 1 — Clone and start
+
+```bash
+git clone https://github.com/aine1100/Upstash-Redis-Local-server.git
+cd upstash-redis-local
+chmod +x start.sh
+./start.sh
+```
+
+<Tip>
+  If port **6379** is already in use, `start.sh` automatically switches to the **external** profile and connects to your existing Redis.
+</Tip>
+
+## Step 2 — Verify health
+
+Open in your browser:
+
+```
+http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"healthy","redis":"connected"}
+```
+
+## Step 3 — Your first command
+
+**Browser** (easiest):
+
+```
+http://localhost:8000/PING?_token=local-dev-token
+```
+
+**curl** (Git Bash):
+
+```bash
+curl -H "Authorization: Bearer local-dev-token" http://localhost:8000/PING
+```
+
+Expected:
+
+```json
+{"result":"PONG"}
+```
+
+## Step 4 — Set and get a value
+
+```bash
+curl -H "Authorization: Bearer local-dev-token" \
+  http://localhost:8000/SET/mykey/hello
+
+curl -H "Authorization: Bearer local-dev-token" \
+  http://localhost:8000/GET/mykey
+```
+
+## Step 5 — Open the dashboard
+
+Visit [http://localhost:8000/dashboard](http://localhost:8000/dashboard) to see request counts and browse keys.
+
+## Use with @upstash/redis
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const redis = new Redis({
+  url: 'http://localhost:8000',
+  token: 'local-dev-token',
+})
+
+await redis.set('foo', 'bar')
+console.log(await redis.get('foo')) // 'bar'
+```
+
+See the full [SDK integration guide](/guides/sdk-integration).
+
+## Default credentials
+
+| Setting | Value |
+| --- | --- |
+| REST URL | `http://localhost:8000` |
+| Full-access token | `local-dev-token` |
+| Read-only token | `local-readonly-token` |
+| Redis | `localhost:6379` |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Switch from Cloud" icon="repeat" href="/guides/switch-from-cloud">
+    Stop burning cloud quota during dev.
+  </Card>
+  <Card title="CLI Tools" icon="terminal" href="/guides/cli">
+    Seed data, export keys, switch env profiles.
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/introduction">
+    Every endpoint documented.
+  </Card>
+  <Card title="Testing Guide" icon="vial" href="/testing/manual">
+    Verify all features step by step.
+  </Card>
+</CardGroup>

@@ -1,0 +1,85 @@
+---
+title: Docker Profiles
+description: Choose the right Docker Compose profile for your setup — default, external, or Redis Stack.
+---
+
+Docker Compose supports three profiles for different development scenarios.
+
+## Default profile
+
+**When to use:** Clean setup, nothing running on port 6379.
+
+```bash
+docker compose up -d
+```
+
+Starts:
+- `redis` — Redis 7 Alpine on `:6379` with persistent volume
+- `upstash-local` — REST proxy on `:8000`
+
+## External profile
+
+**When to use:** Port 6379 is already taken (existing `redis-local`, system Redis, etc.).
+
+```bash
+docker compose --profile external up -d upstash-local-external
+```
+
+Starts only the proxy, connecting to `host.docker.internal:6379`.
+
+`start.sh` auto-detects port conflicts and uses this profile.
+
+<Warning>
+  Ensure Redis is actually running on the host before starting the external profile. The proxy retries connection on startup but will exit if Redis is unreachable.
+</Warning>
+
+## Stack profile
+
+**When to use:** Your app uses RedisJSON commands (`JSON.SET`, `JSON.GET`).
+
+```bash
+docker compose --profile stack up -d
+```
+
+Starts:
+- `redis-stack` — [Redis Stack](https://redis.io/docs/stack/) on `:6380`
+- `upstash-local-stack` — proxy connected to Redis Stack
+
+## Environment overrides
+
+Create a `.env` file in the project root:
+
+```bash
+UPSTASH_TOKEN=local-dev-token
+UPSTASH_READONLY_TOKEN=local-readonly-token
+REDIS_PORT=6379
+UPSTASH_PORT=8000
+REDIS_ADDR=host.docker.internal:6379   # for external profile
+```
+
+## Profile comparison
+
+| Profile | Redis included | Port | JSON module | Use case |
+| --- | --- | --- | --- | --- |
+| Default | Yes | 6379 | No | Standard dev |
+| External | No | host 6379 | Depends on host | Port conflict |
+| Stack | Yes (Stack) | 6380 | Yes | JSON commands |
+
+## Health checks
+
+All proxy services include Docker healthchecks:
+
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+  interval: 10s
+  timeout: 5s
+  retries: 3
+```
+
+Check status:
+
+```bash
+docker ps
+# STATUS should show (healthy)
+```
