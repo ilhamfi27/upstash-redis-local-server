@@ -1,0 +1,245 @@
+---
+title: "Environment Variables Reference for Local Server"
+sidebarTitle: "Env Variables"
+description: "Complete reference for every environment variable that configures Upstash Redis Local, plus ready-to-use .env profiles for common development scenarios."
+---
+
+Every CLI flag that Upstash Redis Local accepts has a corresponding environment variable. Setting variables in a `.env` file (or exporting them in your shell) is the recommended approach for Docker Compose setups and CI pipelines, because it keeps configuration out of your scripts and makes secrets easier to manage. CLI flags always win over environment variables when both are supplied.
+
+## Two configuration namespaces
+
+Upstash Redis Local uses two distinct sets of variable names that serve different purposes:
+
+**SDK-side variables** — read by the `@upstash/redis` client library (and compatible SDKs) to know where to send requests and which token to use:
+
+| Variable | Purpose |
+|---|---|
+| `UPSTASH_REDIS_REST_URL` | Full base URL the SDK sends requests to (e.g. `http://localhost:8000`) |
+| `UPSTASH_REDIS_REST_TOKEN` | Read-write token the SDK attaches to requests |
+| `UPSTASH_REDIS_REST_READONLY_TOKEN` | Optional read-only token passed to the SDK |
+
+**Server-side variables** — read by the Upstash Redis Local process itself:
+
+| Variable | Equivalent flag | Purpose |
+|---|---|---|
+| `UPSTASH_ADDR` | `--addr` | Address the REST server listens on |
+| `REDIS_ADDR` | `--redis` | Address of the upstream Redis server |
+| `UPSTASH_TOKEN` | `--token` | Read-write API token |
+| `UPSTASH_READONLY_TOKEN` | `--readonly-token` | Read-only API token |
+| `UPSTASH_MAX_RETRIES` | `--max-retries` | Max connection retries on startup |
+| `UPSTASH_RETRY_DELAY` | `--retry-delay` | Milliseconds between retries |
+| `SIMULATE_QUOTA` | `--simulate-quota` | Daily request quota to simulate |
+| `SIMULATE_RPS` | `--simulate-rps` | Per-second rate limit to simulate |
+| `UPSTASH_LOCALHOST_ONLY` | `--localhost-only` | Bind to 127.0.0.1 only |
+| `UPSTASH_DISABLE_QUERY_TOKEN` | `--disable-query-token` | Disallow `?_token=` auth |
+| `UPSTASH_CORS_ORIGIN` | `--cors-origin` | Restrict CORS to one origin |
+| `UPSTASH_REQUIRE_DASHBOARD_AUTH` | `--require-dashboard-auth` | Protect the dashboard |
+| `UPSTASH_BLOCK_DANGEROUS_COMMANDS` | `--block-dangerous-commands` | Block destructive Redis commands |
+| `UPSTASH_SECURE` | `--secure` | Enable all security options at once |
+
+<Note>
+  In a typical local-development workflow you set **both** namespaces — the
+  SDK variables so your application code can connect, and the server variables
+  so the process starts with the right settings. The `.env` template below
+  includes both.
+</Note>
+
+## Full .env template
+
+Copy this file to `.env` at the root of your project and uncomment the sections you need.
+
+```dotenv .env
+# ---------------------------------------------------------------------------
+# SDK connection (read by @upstash/redis and compatible clients)
+# ---------------------------------------------------------------------------
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+UPSTASH_REDIS_REST_READONLY_TOKEN=local-readonly-token
+
+# ---------------------------------------------------------------------------
+# Cloud Upstash — uncomment to point the SDK at production instead of local
+# ---------------------------------------------------------------------------
+# UPSTASH_REDIS_REST_URL=https://your-instance.upstash.io
+# UPSTASH_REDIS_REST_TOKEN=your-cloud-token
+
+# ---------------------------------------------------------------------------
+# Server configuration
+# ---------------------------------------------------------------------------
+UPSTASH_TOKEN=local-dev-token
+UPSTASH_READONLY_TOKEN=local-readonly-token
+UPSTASH_ADDR=:8000
+REDIS_ADDR=:6379
+
+# Startup retry behaviour (useful when Redis is slow to start)
+UPSTASH_MAX_RETRIES=10
+UPSTASH_RETRY_DELAY=1000
+
+# ---------------------------------------------------------------------------
+# Security hardening (recommended on shared Wi-Fi or in CI)
+# ---------------------------------------------------------------------------
+# UPSTASH_SECURE=true
+# UPSTASH_LOCALHOST_ONLY=true
+# UPSTASH_DISABLE_QUERY_TOKEN=true
+# UPSTASH_REQUIRE_DASHBOARD_AUTH=true
+# UPSTASH_BLOCK_DANGEROUS_COMMANDS=true
+# UPSTASH_CORS_ORIGIN=http://localhost:3000
+
+# ---------------------------------------------------------------------------
+# Rate-limit simulation (optional — mirrors Upstash cloud limits)
+# ---------------------------------------------------------------------------
+# SIMULATE_QUOTA=10000
+# SIMULATE_RPS=100
+```
+
+## Variable reference
+
+<ParamField path="UPSTASH_REDIS_REST_URL" type="string">
+  The base URL the `@upstash/redis` SDK (and other compatible clients) uses to
+  reach the local server. Set this to `http://localhost:8000` during
+  development and swap it for your production Upstash URL at deploy time.
+</ParamField>
+
+<ParamField path="UPSTASH_REDIS_REST_TOKEN" type="string">
+  The read-write token the SDK attaches to requests. Must match the value of
+  `UPSTASH_TOKEN` on the server side.
+</ParamField>
+
+<ParamField path="UPSTASH_REDIS_REST_READONLY_TOKEN" type="string">
+  The read-only token passed to the SDK. Must match `UPSTASH_READONLY_TOKEN`
+  on the server side. Optional — leave unset if you do not use the read-only
+  role.
+</ParamField>
+
+<ParamField path="UPSTASH_TOKEN" type="string" default="upstash">
+  The read-write API token accepted by the server. Clients must supply this
+  value via `Authorization: Bearer` or `Authorization: Basic` headers.
+</ParamField>
+
+<ParamField path="UPSTASH_READONLY_TOKEN" type="string" default="">
+  A second token that grants read-only access. When a client authenticates
+  with this token, write commands and destructive commands are rejected. Leave
+  empty to disable the read-only role.
+</ParamField>
+
+<ParamField path="UPSTASH_ADDR" type="string" default=":8000">
+  The `host:port` the REST API server binds to. Use `:8000` to listen on all
+  interfaces, or `127.0.0.1:8000` to restrict to localhost (equivalent to also
+  setting `UPSTASH_LOCALHOST_ONLY=true`).
+</ParamField>
+
+<ParamField path="REDIS_ADDR" type="string" default=":6379">
+  The `host:port` of the upstream Redis server. Change this when Redis is
+  running on a non-standard port or inside a Docker network (e.g.
+  `redis:6379`).
+</ParamField>
+
+<ParamField path="UPSTASH_MAX_RETRIES" type="integer" default="10">
+  Number of times the server retries connecting to Redis before giving up.
+  Increase this in Docker Compose setups where Redis may take a few seconds to
+  become ready.
+</ParamField>
+
+<ParamField path="UPSTASH_RETRY_DELAY" type="integer" default="1000">
+  Milliseconds to wait between each Redis connection retry. Combine with
+  `UPSTASH_MAX_RETRIES` to control total startup wait time.
+</ParamField>
+
+<ParamField path="SIMULATE_QUOTA" type="integer" default="0">
+  Simulates an Upstash cloud daily request quota. The server returns
+  `429 Too Many Requests` after this many requests in a calendar day. Set to
+  `0` to disable quota simulation.
+</ParamField>
+
+<ParamField path="SIMULATE_RPS" type="integer" default="0">
+  Simulates an Upstash cloud per-second rate limit. The server returns `429`
+  when requests exceed this value within a one-second window. Set to `0` to
+  disable.
+</ParamField>
+
+<ParamField path="UPSTASH_LOCALHOST_ONLY" type="boolean" default="false">
+  Set to `true` to bind the server to `127.0.0.1` and block all external
+  network access.
+</ParamField>
+
+<ParamField path="UPSTASH_DISABLE_QUERY_TOKEN" type="boolean" default="false">
+  Set to `true` to reject `?_token=` query-string authentication. Only
+  `Authorization` header-based auth is accepted when this is enabled.
+</ParamField>
+
+<ParamField path="UPSTASH_CORS_ORIGIN" type="string" default="">
+  Restricts the `Access-Control-Allow-Origin` response header to a single
+  allowed origin. Leave empty to allow all origins.
+</ParamField>
+
+<ParamField path="UPSTASH_REQUIRE_DASHBOARD_AUTH" type="boolean" default="false">
+  Set to `true` to require a valid `Bearer` token before the built-in key
+  browser dashboard loads.
+</ParamField>
+
+<ParamField path="UPSTASH_BLOCK_DANGEROUS_COMMANDS" type="boolean" default="false">
+  Set to `true` to block `FLUSHALL`, `FLUSHDB`, `CONFIG`, `SHUTDOWN`,
+  `DEBUG`, `SLAVEOF`, `REPLICAOF`, and `MIGRATE`.
+</ParamField>
+
+<ParamField path="UPSTASH_SECURE" type="boolean" default="false">
+  Set to `true` to enable all security hardening options at once. See the
+  [Security](/configuration/security) page for details.
+</ParamField>
+
+---
+
+## Environment profiles
+
+You can maintain separate `.env` files for different scenarios and load the right one for each context.
+
+<CodeGroup>
+
+```dotenv .env.local
+# Solo local development — no security overhead
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+UPSTASH_TOKEN=local-dev-token
+REDIS_ADDR=:6379
+```
+
+```dotenv .env.ci
+# CI environment — security on, rate-limit simulation enabled
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=ci-strong-token-replace-me
+UPSTASH_TOKEN=ci-strong-token-replace-me
+REDIS_ADDR=:6379
+UPSTASH_SECURE=true
+UPSTASH_LOCALHOST_ONLY=true
+UPSTASH_BLOCK_DANGEROUS_COMMANDS=true
+SIMULATE_QUOTA=10000
+SIMULATE_RPS=100
+```
+
+```dotenv .env.team
+# Shared development server on a local network
+UPSTASH_REDIS_REST_URL=http://dev-server.local:8000
+UPSTASH_REDIS_REST_TOKEN=team-strong-token-replace-me
+UPSTASH_TOKEN=team-strong-token-replace-me
+UPSTASH_READONLY_TOKEN=team-readonly-token-replace-me
+REDIS_ADDR=redis:6379
+UPSTASH_BLOCK_DANGEROUS_COMMANDS=true
+UPSTASH_REQUIRE_DASHBOARD_AUTH=true
+UPSTASH_CORS_ORIGIN=http://dev-server.local:3000
+```
+
+</CodeGroup>
+
+Load a specific profile by passing it to your process manager or Docker Compose:
+
+```bash
+# Load a named profile in the shell
+export $(grep -v '^#' .env.ci | xargs)
+
+# Or pass it to Docker Compose
+docker compose --env-file .env.ci up
+```
+
+<Tip>
+  Add all `.env.*` files to your `.gitignore` to prevent tokens from being
+  committed to version control.
+</Tip>

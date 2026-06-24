@@ -1,0 +1,164 @@
+---
+title: "Docker Compose Profiles for Upstash Redis Local"
+sidebarTitle: "Docker Profiles"
+description: "Choose the right Docker Compose profile for your setup — bundled Redis, an existing local instance, or Redis Stack with JSON module support."
+---
+
+The repository ships with a `docker-compose.yml` that covers three common development setups, each exposed as a named profile. You pick the profile that matches your environment, and Docker Compose starts only the containers you actually need. If you use the included `start.sh` script, it inspects your machine and selects the correct profile automatically — so in most cases you never have to think about profiles at all.
+
+## Profiles at a glance
+
+<CardGroup cols={3}>
+  <Card title="Default" icon="play">
+    Starts a bundled Redis 7-alpine container alongside the Upstash local server. The right choice if you have no existing Redis instance.
+  </Card>
+  <Card title="external" icon="plug">
+    Starts only the Upstash local server and points it at the Redis instance already running on your machine. Use this when you manage Redis yourself.
+  </Card>
+  <Card title="stack" icon="layer-group">
+    Starts Redis Stack (includes the RedisJSON module) alongside the Upstash local server. Use this when you need `JSON.SET`, `JSON.GET`, and related commands.
+  </Card>
+</CardGroup>
+
+## Default profile — bundled Redis
+
+The default profile requires no profile flag. It brings up a Redis 7-alpine container and the Upstash local server together, connected on an internal Docker network. This is the fastest way to get started on a clean machine.
+
+```bash
+docker compose up -d
+```
+
+Two containers start:
+
+- `redis` — Redis 7-alpine, exposed on `REDIS_PORT` (default `6379`)
+- `upstash-local` — the REST API server, exposed on `UPSTASH_PORT` (default `8000`)
+
+Your application connects to `http://localhost:8000` (or whatever port you configure).
+
+## External profile — use your existing Redis
+
+If you already have Redis running on port 6379 — whether installed natively, managed by another Docker Compose file, or started by a different service — use the `external` profile. It starts only the Upstash local server and tells it to connect to `host.docker.internal:6379`.
+
+```bash
+docker compose --profile external up -d upstash-local-external
+```
+
+<Note>
+  On Linux, `host.docker.internal` is not automatically available. Docker Compose adds an `extra_hosts` entry for you, but verify that your Redis process is accessible on `0.0.0.0:6379` (not just `127.0.0.1:6379`).
+</Note>
+
+## Stack profile — Redis Stack with JSON support
+
+The `stack` profile replaces the plain Redis container with Redis Stack, which bundles the [RedisJSON](https://redis.io/docs/data-types/json/) module and other extensions. Use this profile whenever your application uses JSON-native commands like `JSON.SET`, `JSON.GET`, `JSON.ARRAPPEND`, or `JSON.NUMINCRBY`.
+
+```bash
+docker compose --profile stack up -d
+```
+
+Two containers start:
+
+- `redis-stack` — Redis Stack, exposed on `REDIS_PORT` (default `6379`)
+- `upstash-local-stack` — the REST API server, exposed on `UPSTASH_PORT` (default `8000`)
+
+<Tip>
+  Redis Stack also includes RediSearch, RedisGraph, RedisBloom, and RedisTimeSeries. These modules are available through the same REST API — just call their commands the same way you would any other Redis command.
+</Tip>
+
+## Automatic profile selection with start.sh
+
+The `start.sh` script at the root of the repository removes the need to remember which profile to use. Run it instead of `docker compose up`:
+
+```bash
+./start.sh
+```
+
+The script checks whether port 6379 is already in use on your machine:
+
+- **Port 6379 is free** → uses the default profile and starts a bundled Redis container.
+- **Port 6379 is occupied** → switches to the `external` profile and points the server at the existing Redis instance.
+
+<Steps>
+  <Step title="Make the script executable">
+    ```bash
+    chmod +x start.sh
+    ```
+  </Step>
+  <Step title="Run start.sh">
+    ```bash
+    ./start.sh
+    ```
+  </Step>
+  <Step title="Verify the server is ready">
+    ```bash
+    curl http://localhost:8000/health
+    # {"result":"OK"}
+    ```
+  </Step>
+</Steps>
+
+## Environment variable overrides
+
+Every configurable value has a sensible default. Override any of them in a `.env` file in the same directory as `docker-compose.yml`, or pass them directly as shell environment variables before the `docker compose` command.
+
+| Variable | Default | Description |
+|---|---|---|
+| `REDIS_PORT` | `6379` | Port Redis listens on (host-side) |
+| `UPSTASH_PORT` | `8000` | Port the REST API server listens on |
+| `UPSTASH_TOKEN` | `local-dev-token` | Read-write API token |
+| `UPSTASH_READONLY_TOKEN` | `local-readonly-token` | Read-only API token |
+| `UPSTASH_REQUIRE_DASHBOARD_AUTH` | `true` | Require auth to view the dashboard |
+| `UPSTASH_DISABLE_QUERY_TOKEN` | `false` | Disallow `?_token=` query-param auth |
+| `UPSTASH_BLOCK_DANGEROUS_COMMANDS` | `false` | Block `FLUSHALL`, `FLUSHDB`, `DEBUG`, etc. |
+| `UPSTASH_SECURE` | `false` | Enable TLS on the REST API server |
+
+Create a `.env` file to persist your overrides across restarts:
+
+```bash
+# .env
+UPSTASH_PORT=9000
+UPSTASH_TOKEN=my-secret-token
+UPSTASH_READONLY_TOKEN=my-readonly-token
+UPSTASH_REQUIRE_DASHBOARD_AUTH=true
+UPSTASH_BLOCK_DANGEROUS_COMMANDS=true
+```
+
+Then start any profile as usual — Docker Compose picks up `.env` automatically:
+
+```bash
+docker compose up -d
+```
+
+## Data persistence
+
+The default and stack profiles mount a named Docker volume called `redis_data` to persist your Redis data across container restarts and `docker compose down` calls.
+
+```bash
+# Data survives a restart
+docker compose down
+docker compose up -d
+# Your keys are still there
+```
+
+To wipe all data and start fresh, remove the volume explicitly:
+
+```bash
+docker compose down -v
+```
+
+<Warning>
+  `docker compose down -v` permanently deletes all data stored in `redis_data`. There is no undo. Make sure you have exported or backed up any keys you need before running this command.
+</Warning>
+
+## Port configuration
+
+If the default ports conflict with other services on your machine, override them before starting the stack:
+
+```bash
+UPSTASH_PORT=9000 REDIS_PORT=6380 docker compose up -d
+```
+
+Then point your application at the new port:
+
+```bash
+curl "http://localhost:9000/ping?_token=local-dev-token"
+```

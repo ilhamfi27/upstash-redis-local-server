@@ -1,0 +1,148 @@
+---
+title: "Authenticate Requests to Upstash Redis Local"
+sidebarTitle: "Authentication"
+description: "Secure your local Upstash Redis server with read-write and read-only tokens, and learn the three ways to pass credentials in every request."
+---
+
+Every request to Upstash Redis Local must carry a valid token. The server ships with sensible defaults so you can start without any configuration, and it supports the same three authentication methods as Upstash cloud so your existing SDKs and tooling work out of the box. When a request arrives without a token, or with an unrecognised one, the server immediately returns an HTTP `401` response and never touches Redis.
+
+## Token types
+
+The server recognises two distinct tokens, each controlling a different level of access:
+
+| Token | Environment variable | Default value | Access level |
+|---|---|---|---|
+| API token | `UPSTASH_TOKEN` | `local-dev-token` | Full read-write access |
+| Read-only token | `UPSTASH_READONLY_TOKEN` | `local-readonly-token` | Read commands only |
+
+Use the read-only token when you want to hand credentials to a service that should never be able to mutate data — for example, a reporting dashboard or a cache-warming script.
+
+## Passing the token
+
+You can attach the token to a request in three different ways. All three are equivalent; choose whichever fits your tooling.
+
+<Tabs>
+  <Tab title="Query Param">
+    Append `_token` as a URL query parameter. This is the quickest option for curl one-liners and browser-based testing.
+
+    ```bash
+    curl "http://localhost:8000/get/mykey?_token=local-dev-token"
+    ```
+
+    <Warning>
+      Query parameters appear in server access logs and browser history. Prefer the `Authorization` header in any automated or shared environment, even locally.
+    </Warning>
+
+    You can disable query-param authentication entirely by setting `UPSTASH_DISABLE_QUERY_TOKEN=true` in your environment.
+  </Tab>
+  <Tab title="Bearer Header">
+    Pass the token in the `Authorization` header using the `Bearer` scheme. This is the recommended method for SDK usage and server-side code.
+
+    ```bash
+    curl http://localhost:8000/get/mykey \
+      -H "Authorization: Bearer local-dev-token"
+    ```
+
+    All official Upstash SDKs use this format when you supply a `token` in their configuration:
+
+    ```typescript
+    import { Redis } from "@upstash/redis";
+
+    const redis = new Redis({
+      url: "http://localhost:8000",
+      token: "local-dev-token",
+    });
+    ```
+  </Tab>
+  <Tab title="Basic Auth">
+    Pass the token using HTTP Basic authentication. The username field is ignored — only the password field is checked. Encode `unused:your-token` in base64 and include it in the `Authorization` header.
+
+    ```bash
+    # base64("unused:local-dev-token") = dW51c2VkOmxvY2FsLWRldi10b2tlbg==
+    curl http://localhost:8000/get/mykey \
+      -H "Authorization: Basic dW51c2VkOmxvY2FsLWRldi10b2tlbg=="
+    ```
+
+    You can also use curl's built-in `-u` flag and let it handle the encoding:
+
+    ```bash
+    curl http://localhost:8000/get/mykey \
+      -u "unused:local-dev-token"
+    ```
+
+    This method matches how Upstash cloud issues credentials in certain integrations, ensuring full compatibility.
+  </Tab>
+</Tabs>
+
+## Default tokens
+
+Out of the box, no configuration is required. The server starts with two pre-set tokens:
+
+```bash
+UPSTASH_TOKEN=local-dev-token
+UPSTASH_READONLY_TOKEN=local-readonly-token
+```
+
+These defaults are intentionally simple so you can start coding immediately. Replace them before exposing the server to any network outside your local machine.
+
+## Read-only token restrictions
+
+When a request is authenticated with the read-only token, the server blocks any command that would mutate state. The following commands (and their variants) return an error when issued with the read-only token:
+
+<CardGroup cols={2}>
+  <Card title="Key mutation" icon="key">
+    `SET`, `DEL`, `EXPIRE`, `EXPIREAT`, `PERSIST`, `RENAME`, `RENAMENX`, `COPY`, `MOVE`, `UNLINK`
+  </Card>
+  <Card title="Database operations" icon="database">
+    `FLUSHALL`, `FLUSHDB`
+  </Card>
+  <Card title="Server administration" icon="server">
+    `CONFIG`, `DEBUG`, `SHUTDOWN`, `SAVE`, `BGSAVE`, `BGREWRITEAOF`
+  </Card>
+  <Card title="Data structure writes" icon="layer-group">
+    `HSET`, `HDEL`, `LPUSH`, `RPUSH`, `LREM`, `SADD`, `SREM`, `ZADD`, `ZREM`, and all other write variants
+  </Card>
+</CardGroup>
+
+Read commands — `GET`, `MGET`, `HGET`, `LRANGE`, `SMEMBERS`, `ZRANGE`, `TTL`, `KEYS`, `SCAN`, and similar — are always permitted for the read-only token.
+
+## Generating a secure token
+
+The default tokens are suitable for getting started, but you should generate a cryptographically random token for any environment where security matters. Use the built-in CLI command:
+
+```bash
+upstash-local generate-token
+```
+
+The command prints a randomly generated token to stdout. Copy it into your `.env` file or pass it directly as an environment variable:
+
+```bash
+UPSTASH_TOKEN=$(upstash-local generate-token) docker compose up -d
+```
+
+## Unauthorised response
+
+Any request that omits the token, provides the wrong token, or uses a revoked token receives an HTTP `401` response:
+
+```json
+{
+  "error": "Unauthorized"
+}
+```
+
+No partial data is returned. The server closes the request immediately without executing any Redis command.
+
+## Dynamic token issuance
+
+The server supports the `ACL RESTTOKEN` command, which lets you issue new tokens programmatically at runtime. This is useful in testing scenarios where you need short-lived or per-test tokens:
+
+```bash
+curl -X POST http://localhost:8000/ \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["ACL", "RESTTOKEN", "new-user", "new-secret-token"]'
+```
+
+## Dashboard authentication
+
+The built-in dashboard at `http://localhost:8000/dashboard` can be protected with its own authentication layer. Set `UPSTASH_REQUIRE_DASHBOARD_AUTH=true` in your environment to require credentials before the dashboard UI is served. This keeps the visual interface separate from your programmatic API tokens.

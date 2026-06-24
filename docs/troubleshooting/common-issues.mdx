@@ -1,0 +1,185 @@
+---
+title: "Fix Common Upstash Redis Local Issues Fast"
+sidebarTitle: "Common Issues"
+description: "Diagnose and resolve the most frequent problems with Upstash Redis Local, from connection errors and Docker networking to auth failures and rate limits."
+---
+
+Running into a problem with Upstash Redis Local is usually a quick fix. This page walks you through the most common issues developers encounter, explains why each one happens, and gives you concrete steps to resolve it.
+
+---
+
+## Connection refused
+
+You send a request to `http://localhost:8000` and receive a "connection refused" error, or your client fails to connect entirely.
+
+<Steps>
+  <Step title="Confirm Redis is running">
+    Upstash Redis Local requires an active Redis instance to forward commands to. Verify Redis is reachable before starting the local server:
+
+    ```bash
+    redis-cli ping
+    ```
+
+    You should see `PONG`. If you don't, start your Redis instance first.
+  </Step>
+  <Step title="Check the address format">
+    The `--redis` flag requires a full `host:port` value. A bare port like `:6379` is not valid on its own when a host is expected.
+
+    ```bash
+    # Correct
+    ./bin/upstash-redis-local --redis localhost:6379
+
+    # Incorrect — will fail
+    ./bin/upstash-redis-local --redis :6379
+    ```
+  </Step>
+  <Step title="Adjust for Docker environments">
+    Inside a Docker container, `localhost` refers to the container itself, not your host machine. Use the appropriate address for your setup:
+
+    ```bash
+    # Reach a Redis container defined in the same Docker Compose file
+    --redis redis:6379
+
+    # Reach Redis running on the host machine from inside a container
+    --redis host.docker.internal:6379
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Docker networking problems
+
+Your containers can't reach each other, or the local server can't connect to Redis when running inside Docker Compose.
+
+Docker routes traffic differently depending on where each service lives. Use the right address for each scenario:
+
+| Scenario | Address to use |
+|---|---|
+| Redis running on your host machine, accessed from a container | `host.docker.internal:6379` |
+| Redis defined as a service in the same `docker-compose.yml` | `redis:6379` (the service name) |
+| Both services on the host network | `localhost:6379` |
+
+<Note>
+  `host.docker.internal` resolves correctly on Docker Desktop for macOS and Windows. On Linux, you may need to add `--add-host=host.docker.internal:host-gateway` to your container's run options.
+</Note>
+
+---
+
+## Port 6379 already in use
+
+When you run `start.sh`, it reports that port 6379 is already occupied, or Docker Compose fails to bind the port.
+
+`start.sh` detects a port conflict automatically and switches to the **external** profile, which connects to your existing Redis instead of starting a new one. If you're running Docker Compose manually, use the same profile explicitly:
+
+```bash
+docker compose --profile external up -d upstash-local-external
+```
+
+<Tip>
+  You can also point `--redis` at any accessible Redis instance — including one running on a non-standard port — to sidestep the conflict entirely.
+</Tip>
+
+---
+
+## Docker not running
+
+`start.sh` exits early with an error saying Docker is not running or cannot be reached.
+
+`start.sh` attempts to auto-start Docker Desktop on macOS and Windows. If the automatic start fails, open Docker Desktop manually and wait for it to finish initializing before re-running the script.
+
+<Warning>
+  On Linux, Docker runs as a system daemon rather than a desktop application. If it isn't running, start it with:
+
+  ```bash
+  sudo systemctl start docker
+  ```
+</Warning>
+
+---
+
+## 401 Unauthorized
+
+Every request returns `401 Unauthorized`, even though the server appears to be running.
+
+The token your client is sending doesn't match the token the server was started with. The default token is `local-dev-token`. Test your connection directly with `curl` to isolate the issue:
+
+```bash
+curl "http://localhost:8000/PING?_token=local-dev-token"
+```
+
+If that succeeds, update your application's `UPSTASH_REDIS_REST_TOKEN` environment variable to match the token you passed when starting the server. If you started the server with a custom token, use that value instead:
+
+```bash
+./bin/upstash-redis-local --token my-custom-token
+```
+
+```bash
+# Then in your app
+UPSTASH_REDIS_REST_TOKEN=my-custom-token
+```
+
+---
+
+## 429 Rate limit exceeded
+
+Requests start returning `429 Too Many Requests` unexpectedly.
+
+You have quota simulation or RPS limiting enabled. These flags intentionally reject requests once thresholds are reached, mimicking Upstash cloud plan limits:
+
+- `--simulate-quota` — enforces a total request count cap
+- `--simulate-rps` — enforces a per-second request rate cap
+
+To clear the limit, restart the server. To avoid hitting it again, increase the threshold or remove the flag:
+
+```bash
+# Remove quota simulation entirely
+./bin/upstash-redis-local --redis localhost:6379
+
+# Or raise the limit
+./bin/upstash-redis-local --redis localhost:6379 --simulate-rps 10000
+```
+
+---
+
+## Garbled or base64-encoded values
+
+You read a key from Redis through the local server and receive a string like `"YnVsb0..."` instead of the actual value.
+
+This was a bug in earlier versions of Upstash Redis Local that caused values to be double-encoded as base64. Update to the latest version to resolve it:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+If you used `start.sh` originally, re-run it after pulling to rebuild the image with the fix applied.
+
+---
+
+## Dashboard not showing
+
+You navigate to `http://localhost:8000/dashboard` and see a blank page, a 404, or an auth prompt you weren't expecting.
+
+<Steps>
+  <Step title="Confirm the server is running">
+    Make sure Upstash Redis Local is up and reachable. Send a quick ping to verify:
+
+    ```bash
+    curl "http://localhost:8000/PING?_token=local-dev-token"
+    ```
+  </Step>
+  <Step title="Open the correct URL">
+    The dashboard is served at exactly this path — confirm you're not missing a trailing segment:
+
+    ```
+    http://localhost:8000/dashboard
+    ```
+  </Step>
+  <Step title="Pass the token if auth is required">
+    If the server was started with `UPSTASH_REQUIRE_DASHBOARD_AUTH=true`, the dashboard requires your token as a query parameter:
+
+    ```
+    http://localhost:8000/dashboard?_token=local-dev-token
+    ```
+  </Step>
+</Steps>

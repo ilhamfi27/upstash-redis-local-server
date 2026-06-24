@@ -1,0 +1,162 @@
+---
+title: "Frequently Asked Questions — Upstash Redis Local"
+sidebarTitle: "FAQ"
+description: "Answers to common questions about Upstash Redis Local — covering compatibility, CI/CD usage, data persistence, multi-app setups, and running without Docker."
+---
+
+These are the questions developers ask most often when getting started with Upstash Redis Local. If you don't find what you're looking for here, check the [Common Issues](/troubleshooting/common-issues) page or open a discussion on GitHub.
+
+---
+
+## Redis commands & compatibility
+
+<Accordion title="Does it support all Redis commands?">
+  Upstash Redis Local forwards every command it receives directly to the underlying Redis instance, so any command Redis supports will work. Two things can restrict which commands are available:
+
+  - **`--block-dangerous-commands`** — when this flag is set, commands like `FLUSHALL`, `FLUSHDB`, and `CONFIG` are blocked to prevent accidental data loss.
+  - **Read-only tokens** — if a client authenticates with a read-only token, write commands such as `SET`, `DEL`, and `LPUSH` are rejected.
+
+  Outside of those restrictions, the full Redis command surface is available.
+</Accordion>
+
+<Accordion title="Does it support Redis Stack and JSON module commands?">
+  Yes. Start the server using the `stack` Docker Compose profile to get Redis Stack, which includes the JSON, Search, TimeSeries, and Bloom modules:
+
+  ```bash
+  docker compose --profile stack up -d
+  ```
+
+  Once running, commands like `JSON.SET` and `JSON.GET` work exactly as they do on Upstash cloud databases that have Redis Stack enabled.
+</Accordion>
+
+---
+
+## Using it in your workflow
+
+<Accordion title="Can I use Upstash Redis Local in CI/CD pipelines?">
+  Yes — it's well suited for CI/CD. Start both Redis and the local server as services in your pipeline alongside your tests. Here's a minimal example for GitHub Actions:
+
+  ```yaml
+  services:
+    redis:
+      image: redis:7
+      ports:
+        - 6379:6379
+    upstash-local:
+      image: upstash/redis-local:latest
+      env:
+        UPSTASH_REDIS_ADDRESS: redis:6379
+      ports:
+        - 8000:8000
+  ```
+
+  Set `UPSTASH_SECURE=true` in environments where you want to enforce token validation. Your application code can point to `http://localhost:8000` without any changes between local and CI runs.
+</Accordion>
+
+<Accordion title="Can I connect multiple apps to the same local server?">
+  Yes. Any number of applications can connect to the same running instance of Upstash Redis Local. Point each one at `http://localhost:8000` and use the same token:
+
+  ```bash
+  UPSTASH_REDIS_REST_URL=http://localhost:8000
+  UPSTASH_REDIS_REST_TOKEN=local-dev-token
+  ```
+
+  Because all apps share the same underlying Redis, they see each other's data. Use separate key prefixes or Redis databases (`SELECT`) if you need isolation between apps.
+</Accordion>
+
+<Accordion title="Can I use it with Python, Ruby, or other languages?">
+  Any language with an HTTP client works. Upstash Redis Local exposes a standard REST API, so you can call it with plain HTTP requests or use one of the official Upstash SDKs.
+
+  For Python, the `upstash-redis` package works out of the box:
+
+  ```python
+  from upstash_redis import Redis
+
+  redis = Redis(
+      url="http://localhost:8000",
+      token="local-dev-token"
+  )
+
+  redis.set("hello", "world")
+  print(redis.get("hello"))
+  ```
+
+  For other languages, use any HTTP client and follow the [REST API reference](/api-reference) to construct requests manually.
+</Accordion>
+
+---
+
+## Data & persistence
+
+<Accordion title="How do I persist data between server restarts?">
+  Data lives in Redis, not in Upstash Redis Local itself. How long it persists depends on how Redis is configured:
+
+  - **Docker Compose (default)** — the Compose file uses a named Docker volume (`redis_data`), so data survives container restarts and `docker compose down` calls that don't include `-v`.
+  - **Ephemeral Redis** — if you start Redis without a persistent volume (e.g., a plain `docker run redis` with no mount), all data is lost when the container stops.
+
+  To wipe data intentionally, remove the named volume:
+
+  ```bash
+  docker compose down -v
+  ```
+</Accordion>
+
+---
+
+## Authentication & tokens
+
+<Accordion title="What's the difference between local-dev-token and my Upstash cloud token?">
+  The token is just a string — the server checks that the value your client sends matches the value it was started with. There's nothing special about `local-dev-token`; it's simply the default so you don't have to configure anything to get started.
+
+  You can use any string you want:
+
+  ```bash
+  ./bin/upstash-redis-local --redis localhost:6379 --token my-project-token
+  ```
+
+  The only requirement is consistency: whatever value you pass at startup, use the same value as `UPSTASH_REDIS_REST_TOKEN` in your application. Your Upstash cloud token is a different credential entirely and should never be used locally.
+</Accordion>
+
+---
+
+## Monitoring & debugging
+
+<Accordion title="How do I see what commands my app is sending?">
+  You have two options:
+
+  **SSE monitor endpoint** — subscribe to the `/monitor` endpoint to receive a real-time stream of every command the server processes:
+
+  ```bash
+  curl -N "http://localhost:8000/monitor?_token=local-dev-token"
+  ```
+
+  **Dashboard** — open `http://localhost:8000/dashboard` in your browser for a visual breakdown of command counts, latency, and recent activity. The dashboard updates live and gives you a quick overview of traffic patterns without needing to read raw SSE output.
+</Accordion>
+
+---
+
+## Running without Docker
+
+<Accordion title="Can I run Upstash Redis Local without Docker?">
+  Yes. If you prefer not to use Docker, build the binary from source and run it directly against a local Redis instance:
+
+  ```bash
+  # Build the binary
+  make build
+
+  # Run against a Redis instance on the default port
+  ./bin/upstash-redis-local --redis localhost:6379
+  ```
+
+  You'll need Go installed to build from source. Make sure Redis is already running on the address you pass to `--redis` before starting the server.
+</Accordion>
+
+<Accordion title="How do I update to the latest version?">
+  Pull the latest changes and rebuild:
+
+  ```bash
+  git pull && docker compose up -d --build
+  ```
+
+  If you used `start.sh` to set things up originally, re-running it after `git pull` handles the rebuild automatically. Updating is important when you encounter bugs like [garbled base64 values](/troubleshooting/common-issues#garbled-or-base64-encoded-values), which are fixed in newer releases.
+</Accordion>

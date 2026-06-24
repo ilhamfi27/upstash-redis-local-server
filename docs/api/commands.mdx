@@ -1,0 +1,277 @@
+---
+title: "Execute Redis Commands via REST Endpoints"
+sidebarTitle: "Commands"
+description: "Send any Redis command to the local server using either the URL path style or the JSON body style, and parse the structured JSON response."
+---
+
+The local server accepts any Redis command through two interchangeable dispatch styles: the **URL path style**, where the command name and arguments are embedded directly in the URL, and the **JSON body style**, where you `POST` a JSON array to the root path. Both styles return the same response envelope and support all three authentication methods. Choose whichever style fits your tooling — they are completely equivalent.
+
+## Dispatch Styles
+
+<Tabs>
+  <Tab title="URL Path Style">
+    Encode the command name as the first path segment and each argument as a subsequent segment. The server accepts both `GET` and `POST` for URL path requests.
+
+    **Syntax**
+
+    ```
+    GET  /COMMAND/arg1/arg2/...
+    POST /COMMAND/arg1/arg2/...
+    ```
+
+    **Rules**
+    - The command name must be uppercase (e.g. `GET`, `SET`, `HSET`).
+    - Arguments follow as additional URL path segments separated by `/`.
+    - URL-encode any argument that contains a `/`, space, or other special character.
+    - Pass the token via the `_token` query parameter or an `Authorization` header.
+
+    ```bash
+    curl "http://localhost:8000/SET/foo/bar?_token=local-dev-token"
+    # → {"result":"OK"}
+
+    curl "http://localhost:8000/GET/foo?_token=local-dev-token"
+    # → {"result":"bar"}
+    ```
+  </Tab>
+  <Tab title="JSON Body Style">
+    `POST` a JSON array to `/` where the first element is the command name (case-insensitive) and subsequent elements are the arguments.
+
+    **Syntax**
+
+    ```
+    POST /
+    Content-Type: application/json
+
+    ["COMMAND", "arg1", "arg2", ...]
+    ```
+
+    **Rules**
+    - The request body must be a valid JSON array.
+    - The first element is the command name; remaining elements are arguments.
+    - Pass the token via the `Authorization` header or `_token` query parameter.
+
+    ```bash
+    curl -X POST http://localhost:8000 \
+      -H "Authorization: Bearer local-dev-token" \
+      -H "Content-Type: application/json" \
+      -d '["SET", "counter", "42"]'
+    # → {"result":"OK"}
+    ```
+  </Tab>
+</Tabs>
+
+## Command Examples
+
+The examples below cover the most common Redis commands. Each example shows both dispatch styles side by side.
+
+### PING
+
+Verify the server is reachable and responding.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/PING?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["PING"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": "PONG"}
+```
+
+### SET
+
+Set a string value for a key.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/SET/mykey/myvalue?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["SET", "mykey", "myvalue"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": "OK"}
+```
+
+### GET
+
+Retrieve the value of a key. Returns `null` when the key does not exist.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/GET/mykey?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["GET", "mykey"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": "myvalue"}
+```
+
+### DEL
+
+Delete one or more keys. Returns the number of keys that were removed.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/DEL/mykey?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["DEL", "mykey"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": 1}
+```
+
+### INCR
+
+Increment the integer value of a key by one. Creates the key with value `1` if it does not exist.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/INCR/counter?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["INCR", "counter"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": 43}
+```
+
+### KEYS
+
+Return all keys matching a pattern. Use `*` to match all keys.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/KEYS/*?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["KEYS", "*"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": ["counter", "mykey"]}
+```
+
+<Warning>
+  Avoid `KEYS *` against large datasets in production. For the local development server it is safe, but get into the habit of using `SCAN` for pattern-based iteration.
+</Warning>
+
+### HSET
+
+Set one or more fields in a hash.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/HSET/myhash/field1/val1?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["HSET", "myhash", "field1", "val1", "field2", "val2"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": 1}
+```
+
+### HGET
+
+Get the value of a field in a hash. Returns `null` when the field does not exist.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/HGET/myhash/field1?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["HGET", "myhash", "field1"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": "val1"}
+```
+
+### EXPIRE
+
+Set a time-to-live on a key in seconds. Returns `1` if the timeout was set, `0` if the key does not exist.
+
+<CodeGroup>
+```bash URL Path
+curl "http://localhost:8000/EXPIRE/mykey/3600?_token=local-dev-token"
+```
+
+```bash JSON Body
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["EXPIRE", "mykey", "3600"]'
+```
+</CodeGroup>
+
+```json Response
+{"result": 1}
+```
+
+## Error Responses
+
+When a command fails — for example, because you supplied the wrong number of arguments or used an invalid type — the server returns an HTTP 4xx or 5xx status with an `error` field in the response body.
+
+```bash
+curl -X POST http://localhost:8000 \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["GET"]'
+```
+
+```json
+{"error": "ERR wrong number of arguments for 'get' command"}
+```
+
+<Note>
+  The error message text comes directly from Redis, so it matches what you would see using `redis-cli` or any other Redis client. You can rely on the same error strings across the local server and Upstash cloud.
+</Note>

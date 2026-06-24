@@ -1,0 +1,280 @@
+---
+title: "upstash-local CLI Command Reference"
+sidebarTitle: "Commands"
+description: "Full syntax, flags, and examples for every upstash-local subcommand: use, status, seed, export, import, ping, and generate-token."
+---
+
+This page documents every subcommand available in the `upstash-local` CLI. Each section covers the command's purpose, its full flag set, and a concrete example showing what to expect when you run it.
+
+---
+
+## use
+
+Switch the environment your application targets by writing the appropriate connection variables to a `.env` file. Pass either `dev` or `cloud` as the profile name.
+
+```bash
+upstash-local use <profile>
+```
+
+### Profiles
+
+**`dev`** — Writes `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` into `.env.local`, pointing at the local server. If `.env.local` already exists, only those two keys are updated; other variables are left intact.
+
+```bash
+upstash-local use dev
+```
+
+After running this command, `.env.local` contains:
+
+```dotenv
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+```
+
+**`cloud`** — Writes your Upstash Cloud credentials into `.env.cloud`. Ensure your cloud credentials are available in your environment before running this profile.
+
+```bash
+upstash-local use cloud
+```
+
+<Note>
+  Most Next.js, Vite, and similar frameworks load `.env.local` automatically. After running `use dev`, restart your dev server so the updated variables are picked up.
+</Note>
+
+---
+
+## status
+
+Display which environment your app currently targets, along with the active URL and token.
+
+```bash
+upstash-local status
+```
+
+### Example output
+
+```
+Profile:  dev
+URL:      http://localhost:8000
+Token:    local-dev-token
+```
+
+Use `status` to confirm which environment is active before running commands that write data, so you don't accidentally seed or import into the wrong target.
+
+---
+
+## seed
+
+Populate a running Redis server with randomly generated string keys. This is useful for performance testing, UI development with realistic data volumes, or reproducing bugs that only surface at scale.
+
+```bash
+upstash-local seed [flags]
+```
+
+### Flags
+
+<ParamField query="--keys" type="integer" default="100">
+  Number of keys to create. Each key receives a randomly generated string value.
+</ParamField>
+
+<ParamField query="--prefix" type="string" default="dev:">
+  Prefix prepended to every key name. Keys are named `<prefix><n>` where `n` is a sequential integer — for example, `dev:1`, `dev:2`, and so on.
+</ParamField>
+
+<ParamField query="--url" type="string" default="http://localhost:8000">
+  Base URL of the Upstash Redis REST API to write keys into.
+</ParamField>
+
+<ParamField query="--token" type="string" default="local-dev-token">
+  Authentication token sent in the `Authorization` header.
+</ParamField>
+
+### Example — create 1 000 keys
+
+```bash
+upstash-local seed --keys 1000 --prefix session: --url http://localhost:8000 --token local-dev-token
+```
+
+```
+Seeding 1000 keys with prefix "session:" ...
+✓ Done. 1000 keys written in 212ms
+```
+
+<Tip>
+  `seed` uses the Redis pipeline API internally, so writing thousands of keys is fast even over a REST transport. For very large datasets (100 000+ keys), consider breaking the work into multiple `seed` invocations with different prefixes.
+</Tip>
+
+---
+
+## export
+
+Snapshot all keys matching a pattern from a running Redis server and write them to a JSON file. The output preserves each key's type, value, and TTL so it can be restored faithfully with `import`.
+
+```bash
+upstash-local export [flags]
+```
+
+### Flags
+
+<ParamField query="--output" type="string" default="dump.json">
+  Path of the JSON file to write. The file is created if it does not exist and overwritten if it does.
+</ParamField>
+
+<ParamField query="--pattern" type="string" default="*">
+  Key pattern passed to `SCAN`. Use Redis glob syntax — for example, `user:*` exports only keys whose names start with `user:`.
+</ParamField>
+
+<ParamField query="--url" type="string" default="http://localhost:8000">
+  Base URL of the Upstash Redis REST API to read keys from.
+</ParamField>
+
+<ParamField query="--token" type="string" default="local-dev-token">
+  Authentication token sent in the `Authorization` header.
+</ParamField>
+
+### Supported key types
+
+`export` handles the following Redis data types: `string`, `hash`, `list`, `set`, and `zset`. Each key is serialised as a JSON object with a consistent shape:
+
+```json
+[
+  {"key": "dev:user", "type": "string", "value": "alice", "ttl": -1},
+  {"key": "dev:count", "type": "string", "value": "42", "ttl": 3600}
+]
+```
+
+A `ttl` of `-1` means the key has no expiry.
+
+### Example — export all keys to a file
+
+```bash
+upstash-local export --output snapshot.json --pattern "*"
+```
+
+```
+Exporting keys matching "*" ...
+✓ 1000 keys written to snapshot.json
+```
+
+---
+
+## import
+
+Restore keys from a JSON file previously created by `export`. Use this to reload a known data state, share a dataset with a teammate, or migrate keys between two running servers.
+
+```bash
+upstash-local import [flags]
+```
+
+### Flags
+
+<ParamField query="--input" type="string" default="dump.json">
+  Path of the JSON file to read. The file must follow the format produced by `export`.
+</ParamField>
+
+<ParamField query="--url" type="string" default="http://localhost:8000">
+  Base URL of the Upstash Redis REST API to write keys into.
+</ParamField>
+
+<ParamField query="--token" type="string" default="local-dev-token">
+  Authentication token sent in the `Authorization` header.
+</ParamField>
+
+### Example — migrate data from one server to another
+
+Export from the source server, then import into the destination:
+
+<CodeGroup>
+
+```bash Export from source
+upstash-local export \
+  --output migration.json \
+  --url http://localhost:8000 \
+  --token local-dev-token
+```
+
+```bash Import into destination
+upstash-local import \
+  --input migration.json \
+  --url http://localhost:9000 \
+  --token another-token
+```
+
+</CodeGroup>
+
+```
+Importing keys from migration.json ...
+✓ 1000 keys restored in 198ms
+```
+
+<Note>
+  `import` writes keys exactly as they appear in the JSON file, including TTLs. Keys with a `ttl` of `-1` are written with no expiry.
+</Note>
+
+---
+
+## ping
+
+Send a `PING` command to a running server, verify that it responds with `PONG`, and report the round-trip latency. Use this to confirm the server is reachable before running tests or starting your app.
+
+```bash
+upstash-local ping [url]
+```
+
+The `url` argument is positional and optional. Omit it to ping the default server at `http://localhost:8000`.
+
+### Example — successful ping
+
+```bash
+upstash-local ping
+```
+
+```
+PING http://localhost:8000 ... PONG (4ms)
+```
+
+### Example — unreachable server
+
+```bash
+upstash-local ping http://localhost:9999
+```
+
+```
+PING http://localhost:9999 ... ERROR: connection refused
+exit status 1
+```
+
+`ping` exits with a non-zero status code on failure, making it suitable as a readiness check in shell scripts and CI pipelines:
+
+```bash
+upstash-local ping || echo "Server not ready — aborting."
+```
+
+---
+
+## generate-token
+
+Generate a cryptographically random base64-encoded token and print it to stdout. Use this to create a strong, unique token when you want more security than the default `local-dev-token`.
+
+```bash
+upstash-local generate-token
+```
+
+### Example output
+
+```
+Y3J5cHRvLXNlY3VyZS10b2tlbi1leGFtcGxlLTEyMzQ=
+```
+
+### Using the token in your environment
+
+Copy the printed value into your `.env.local` file and pass the same value to the server at startup:
+
+```dotenv
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=Y3J5cHRvLXNlY3VyZS10b2tlbi1leGFtcGxlLTEyMzQ=
+```
+
+<Tip>
+  You can pipe the output directly into your clipboard on macOS with `upstash-local generate-token | pbcopy`, or on Linux with `upstash-local generate-token | xclip -selection clipboard`.
+</Tip>

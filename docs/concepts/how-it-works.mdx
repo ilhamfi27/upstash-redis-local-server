@@ -1,0 +1,176 @@
+---
+title: "How Upstash Redis Local Works Under the Hood"
+sidebarTitle: "How It Works"
+description: "Learn how upstash-redis-local bridges the Upstash Redis REST API to a local Redis instance using a lightweight Go HTTP server."
+---
+
+Upstash Redis Local is a thin Go HTTP server built on [fasthttp](https://github.com/valyala/fasthttp) that sits between your application and a local Redis process. It speaks the exact same REST API as the Upstash cloud service, so any SDK, client library, or curl command that works against Upstash cloud works against it without modification. The server translates every incoming HTTP request into one or more Redis commands, executes them through a connection pool, and returns a JSON response — all within a single process you can run locally or in Docker.
+
+## Architecture overview
+
+The server is composed of three layers:
+
+1. **HTTP layer** — fasthttp handles incoming REST requests, validates tokens, and routes commands.
+2. **Translation layer** — command names and arguments are extracted from the URL path or JSON body, validated, and mapped to native Redis protocol (RESP) calls.
+3. **Redis connection pool** — a pool of persistent TCP connections to a local Redis instance handles the actual command execution and returns results to the HTTP layer.
+
+```
+Your App / SDK
+      │  HTTP REST
+      ▼
+upstash-redis-local (fasthttp)
+      │  RESP (Redis protocol)
+      ▼
+Local Redis (any flavor)
+```
+
+Because the translation layer mirrors the Upstash cloud implementation exactly, you get the same error messages, the same data encoding rules, and the same edge-case behavior as the hosted service.
+
+## Request routing
+
+The server exposes several route patterns. Each one maps to a different mode of sending Redis commands:
+
+| Route | Method | Description |
+|---|---|---|
+| `/<COMMAND>/[args...]` | `GET` or `POST` | Path-segment command dispatch |
+| `/` | `POST` | JSON body command dispatch |
+| `/pipeline` | `POST` | Pipelined batch of commands |
+| `/multi-exec` | `POST` | Transactional pipeline (MULTI/EXEC) |
+| `/publish/<channel>` | `POST` | Pub/Sub publish |
+| `/subscribe/<channel>` | `GET` | Pub/Sub subscribe (SSE) |
+| `/monitor` | `GET` | Live command monitor stream |
+| `/health` | `GET` | Liveness probe |
+| `/ready` | `GET` | Readiness probe |
+| `/dashboard` | `GET` | Browser-based dashboard UI |
+
+### Path-segment command dispatch
+
+The simplest way to issue a command is to embed it directly in the URL path. The first segment is the command name and subsequent segments are its arguments.
+
+```bash
+# GET key
+curl http://localhost:8000/get/mykey?_token=local-dev-token
+
+# SET key with expiry
+curl -X POST "http://localhost:8000/set/mykey/hello?_token=local-dev-token&EX=60"
+```
+
+### JSON body dispatch
+
+For commands with complex or binary arguments, `POST` to `/` with a JSON array body. The first element is the command name and the remaining elements are its arguments.
+
+```bash
+curl -X POST http://localhost:8000/ \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '["SET", "mykey", "hello", "EX", 60]'
+```
+
+### Pipelined requests
+
+Send multiple commands in a single round-trip by posting a JSON array of command arrays to `/pipeline`. Commands execute sequentially but the results are returned together.
+
+```bash
+curl -X POST http://localhost:8000/pipeline \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[["SET","a","1"],["SET","b","2"],["MGET","a","b"]]'
+```
+
+### Transactional pipeline
+
+Post to `/multi-exec` to wrap commands in a Redis `MULTI`/`EXEC` transaction. All commands in the batch either succeed or are rolled back together.
+
+```bash
+curl -X POST http://localhost:8000/multi-exec \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[["INCR","counter"],["EXPIRE","counter",3600]]'
+```
+
+## Response format
+
+Every response is a JSON object. Successful commands return a `result` field; failed commands return an `error` field.
+
+<CodeGroup>
+```json Success
+{
+  "result": "OK"
+}
+```
+
+```json Success (value response)
+{
+  "result": "hello"
+}
+```
+
+```json Error
+{
+  "error": "WRONGTYPE Operation against a key holding the wrong kind of value"
+}
+```
+</CodeGroup>
+
+Pipeline and multi-exec responses are JSON arrays, one entry per command, each following the same `{"result": ...}` or `{"error": ...}` shape.
+
+```json
+[
+  { "result": "OK" },
+  { "result": "OK" },
+  { "result": ["1", "2"] }
+]
+```
+
+## Special request headers
+
+### `Upstash-Encoding: base64`
+
+When you need to store or retrieve binary data, add the `Upstash-Encoding: base64` header. With this header present:
+
+- **Outgoing values** you send must be base64-encoded strings.
+- **Incoming values** the server returns are also base64-encoded.
+
+This header is identical to the one used by Upstash cloud, so SDKs that enable binary mode work without any changes.
+
+```bash
+# Store a base64-encoded value
+curl -X POST http://localhost:8000/ \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Upstash-Encoding: base64" \
+  -H "Content-Type: application/json" \
+  -d '["SET", "binkey", "aGVsbG8="]'
+```
+
+### `Upstash-Response-Format: resp2`
+
+By default the server serializes responses as idiomatic JSON. If you need the raw [RESP2](https://redis.io/docs/reference/protocol-spec/) wire format (for tooling that parses it directly), add the `Upstash-Response-Format: resp2` header.
+
+```bash
+curl http://localhost:8000/ping \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Upstash-Response-Format: resp2"
+```
+
+## CORS support
+
+CORS headers are enabled by default on every response. This means you can call the server directly from browser JavaScript or edge runtimes during development without a proxy.
+
+<Tip>
+  CORS permissiveness is intentional for local development. In production you use the Upstash cloud service, which enforces its own security model.
+</Tip>
+
+## Cloud API compatibility
+
+Because upstash-redis-local implements the same REST API surface as Upstash cloud, you can point any Upstash SDK at it by swapping the base URL and token:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "http://localhost:8000",
+  token: "local-dev-token",
+});
+```
+
+No code changes beyond the configuration are needed. Every command, pipeline, transaction, pub/sub call, and encoding option behaves identically to the cloud service, giving you confidence that code tested locally will behave the same way in production.

@@ -1,0 +1,62 @@
+---
+title: "Upstash Redis Local: Drop-In Redis REST API for Dev"
+sidebarTitle: "Introduction"
+description: "Run a local Upstash-compatible Redis REST API server for development and testing — no cloud account, no request limits, no cold starts."
+---
+
+Upstash Redis Local is a lightweight local server that speaks the exact same REST API as Upstash Redis. It connects to a real Redis instance running on your machine and exposes the full Upstash HTTP interface, so you can develop and test against it without touching the cloud — and without running into Upstash's free-tier limit of 10,000 requests per day.
+
+## Why use it?
+
+When you build against the Upstash cloud, every `set`, `get`, `pipeline`, and pub/sub call counts toward your daily quota. In active development that ceiling disappears fast. Upstash Redis Local removes the cap entirely: every request hits your local Redis directly, with no rate-limiting, no network latency, and no need for an internet connection.
+
+<CardGroup cols={2}>
+  <Card title="SDK Compatible" icon="puzzle-piece">
+    Works out of the box with the `@upstash/redis` TypeScript/JavaScript SDK. Point `UPSTASH_REDIS_REST_URL` at `localhost:8000` and your existing code runs unchanged.
+  </Card>
+  <Card title="Full REST API Surface" icon="globe">
+    Supports `/pipeline`, `/multi-exec`, `/publish`, `/subscribe`, and `/monitor` — the same endpoints your production Upstash instance exposes.
+  </Card>
+  <Card title="Built-in Dashboard" icon="chart-bar">
+    Browse your keys, inspect values, and run commands from the web dashboard at `http://localhost:8000/dashboard` without any extra tooling.
+  </Card>
+  <Card title="Tiny Footprint" icon="feather">
+    The Docker image weighs in at roughly 10 MB, so it starts in seconds and won't bloat your development environment.
+  </Card>
+  <Card title="Read-Only Token" icon="lock">
+    Ship a separate `local-readonly-token` to parts of your app that should only read, mirroring the access-control model you'll use in production.
+  </Card>
+  <Card title="Rate-Limit Simulator" icon="gauge">
+    Toggle the built-in rate-limit simulator to reproduce throttling behaviour locally before you deploy to the cloud.
+  </Card>
+  <Card title="CORS Enabled" icon="shield-check">
+    CORS headers are set automatically, so browser-based apps and frontend frameworks can call the REST API directly during local development.
+  </Card>
+  <Card title="Docker Compose Profiles" icon="layer-group">
+    Choose between bundled Redis, an external Redis, or a fully isolated profile — all managed through a single `docker-compose.yml`.
+  </Card>
+</CardGroup>
+
+## How it works
+
+When you start Upstash Redis Local, it launches an HTTP server on port `8000` (configurable). Incoming requests that follow the [Upstash Redis REST API](https://upstash.com/docs/redis/features/restapi) are translated into native Redis commands and forwarded to whichever Redis instance you point it at — typically `localhost:6379`. The response is then serialised back into the Upstash JSON envelope and returned to the caller.
+
+From your application's perspective, the server is indistinguishable from the real Upstash service. You authenticate with a bearer token, call the same URL paths, and receive the same response shapes.
+
+```
+Your App  ──HTTP──▶  upstash-redis-local :8000  ──Redis protocol──▶  Redis :6379
+              (Upstash REST API)                      (real data store)
+```
+
+## Who should use it?
+
+Upstash Redis Local is built for anyone who uses Upstash Redis in production and wants a frictionless local story:
+
+- **Backend developers** who need to iterate quickly without burning their daily request quota.
+- **Frontend developers** working with Next.js, SvelteKit, or similar frameworks that call Upstash directly from server components.
+- **CI/CD pipelines** that run integration tests and need a deterministic, disposable Redis environment.
+- **Teams** that want every developer to have an identical local setup that mirrors production without sharing cloud credentials.
+
+<Note>
+  Upstash Redis Local is not a Redis emulator — it connects to a real Redis process. You need a running Redis instance (or use the bundled one from the Docker Compose setup) for the server to function.
+</Note>

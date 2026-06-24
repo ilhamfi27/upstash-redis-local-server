@@ -1,0 +1,151 @@
+---
+title: "Batch Commands with Pipeline and MULTI/EXEC"
+sidebarTitle: "Pipeline"
+description: "Send multiple Redis commands in a single HTTP request using pipeline for performance or MULTI/EXEC for atomic, all-or-nothing transactions."
+---
+
+When you need to run several Redis commands in quick succession, making a separate HTTP request for each one introduces unnecessary latency. The local server provides two batching mechanisms to solve this: **pipeline** sends multiple commands in one request and returns all results together, and **MULTI/EXEC** does the same but wraps everything in an atomic transaction so that either all commands succeed or none take effect.
+
+## Pipeline
+
+A pipeline lets you submit an array of commands in a single `POST /pipeline` request. The server executes every command and returns an array of results in the same order. Pipeline is **not atomic** — if one command fails, the others still run and return their own individual results.
+
+Use pipeline when you want to reduce round-trip overhead and you do not need a guarantee that all commands succeed together.
+
+### Request
+
+`POST /pipeline` with a JSON body that is an array of command arrays:
+
+```bash
+curl -X POST http://localhost:8000/pipeline \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[
+    ["SET", "a", "1"],
+    ["SET", "b", "2"],
+    ["GET", "a"],
+    ["GET", "b"]
+  ]'
+```
+
+### Response
+
+The server returns a JSON array with one entry per command, in the same order as the request:
+
+```json
+[
+  {"result": "OK"},
+  {"result": "OK"},
+  {"result": "1"},
+  {"result": "2"}
+]
+```
+
+### Error Handling in Pipeline
+
+Because pipeline is not atomic, each result is independent. A failing command produces an `error` entry for its position in the array while the remaining commands continue to execute normally.
+
+```bash
+curl -X POST http://localhost:8000/pipeline \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[
+    ["SET", "x", "hello"],
+    ["INCR", "x"],
+    ["GET", "x"]
+  ]'
+```
+
+```json
+[
+  {"result": "OK"},
+  {"error": "ERR value is not an integer or out of range"},
+  {"result": "hello"}
+]
+```
+
+<Note>
+  Always check each element in the pipeline response array individually. A successful HTTP 200 status on the outer request only means the pipeline was received and processed — it does not mean every command inside it succeeded.
+</Note>
+
+---
+
+## MULTI/EXEC
+
+`POST /multi-exec` wraps a batch of commands in a Redis transaction. The server executes all commands atomically: no other client can interleave operations between them, and if the transaction cannot be committed, none of the commands take effect.
+
+Use MULTI/EXEC when correctness matters and you need a guarantee that a sequence of commands runs as an indivisible unit — for example, when decrementing a balance and recording a ledger entry at the same time.
+
+### Request
+
+`POST /multi-exec` with the same array-of-arrays body format as pipeline:
+
+```bash
+curl -X POST http://localhost:8000/multi-exec \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '[
+    ["SET",  "x", "10"],
+    ["INCR", "x"],
+    ["GET",  "x"]
+  ]'
+```
+
+### Response
+
+On success, the server returns a results array in command order:
+
+```json
+[
+  {"result": "OK"},
+  {"result": 11},
+  {"result": "11"}
+]
+```
+
+<Warning>
+  If the transaction is aborted (for example, due to a `WATCH` conflict or a server error), the server returns an HTTP 500 with an error body and none of the commands are applied.
+</Warning>
+
+---
+
+## Pipeline vs MULTI/EXEC
+
+| | Pipeline (`/pipeline`) | MULTI/EXEC (`/multi-exec`) |
+|---|---|---|
+| **Atomicity** | No — commands run independently | Yes — all-or-nothing |
+| **Error isolation** | Each command fails or succeeds on its own | Any error aborts the whole transaction |
+| **Use case** | Batching reads/writes for performance | Operations that must not be partially applied |
+| **Execution order** | Sequential, same as request order | Sequential, same as request order |
+| **Interleaving** | Other clients may interleave | No interleaving — fully isolated |
+
+---
+
+## TypeScript Example with @upstash/redis
+
+The `@upstash/redis` SDK ships with a first-class pipeline API. Point the client at your local server and chain commands with `.pipeline()`.
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "http://localhost:8000",
+  token: "local-dev-token",
+});
+
+// Build a pipeline and execute it in one HTTP request
+const [setResult, incrResult, getResult] = await redis
+  .pipeline()
+  .set("counter", "0")
+  .incr("counter")
+  .get("counter")
+  .exec();
+
+console.log(setResult);   // "OK"
+console.log(incrResult);  // 1
+console.log(getResult);   // "1"
+```
+
+<Tip>
+  Use `redis.multi()` instead of `redis.pipeline()` in the SDK when you need the MULTI/EXEC transaction semantics. The method signatures are identical — only the atomicity guarantee changes.
+</Tip>
