@@ -1,7 +1,7 @@
 ---
-title: "upstash-local CLI Command Reference"
+title: "upstash-local CLI Commands: Full Syntax and Examples"
 sidebarTitle: "Commands"
-description: "Full syntax, flags, and examples for every upstash-local subcommand: use, status, seed, export, import, ping, and generate-token."
+description: "Complete flag reference and examples for every upstash-local subcommand: use, status, seed, export, import, ping, and generate-token. Defaults included."
 ---
 
 This page documents every subcommand available in the `upstash-local` CLI. Each section covers the command's purpose, its full flag set, and a concrete example showing what to expect when you run it.
@@ -31,7 +31,7 @@ UPSTASH_REDIS_REST_URL=http://localhost:8000
 UPSTASH_REDIS_REST_TOKEN=local-dev-token
 ```
 
-**`cloud`** — Writes your Upstash Cloud credentials into `.env.cloud`. Ensure your cloud credentials are available in your environment before running this profile.
+**`cloud`** — Reads your Upstash Cloud credentials from `.env.cloud` and applies them as the active profile. The `.env.cloud` file must already exist and contain your cloud credentials before running this profile.
 
 ```bash
 upstash-local use cloud
@@ -138,8 +138,8 @@ upstash-local export [flags]
 
 ```json
 [
-  {"key": "dev:user", "type": "string", "value": "alice", "ttl": -1},
-  {"key": "dev:count", "type": "string", "value": "42", "ttl": 3600}
+  {"key": "dev:user:1", "type": "string", "value": "alice", "ttl": -1},
+  {"key": "dev:counter", "type": "string", "value": "42", "ttl": 3600}
 ]
 ```
 

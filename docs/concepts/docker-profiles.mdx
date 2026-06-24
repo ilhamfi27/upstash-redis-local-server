@@ -57,7 +57,7 @@ docker compose --profile stack up -d
 
 Two containers start:
 
-- `redis-stack` — Redis Stack, exposed on `REDIS_PORT` (default `6379`)
+- `redis-stack` — Redis Stack, exposed on `REDIS_PORT` (default `6380`)
 - `upstash-local-stack` — the REST API server, exposed on `UPSTASH_PORT` (default `8000`)
 
 <Tip>
@@ -109,7 +109,7 @@ Every configurable value has a sensible default. Override any of them in a `.env
 | `UPSTASH_REQUIRE_DASHBOARD_AUTH` | `true` | Require auth to view the dashboard |
 | `UPSTASH_DISABLE_QUERY_TOKEN` | `false` | Disallow `?_token=` query-param auth |
 | `UPSTASH_BLOCK_DANGEROUS_COMMANDS` | `false` | Block `FLUSHALL`, `FLUSHDB`, `DEBUG`, etc. |
-| `UPSTASH_SECURE` | `false` | Enable TLS on the REST API server |
+| `UPSTASH_SECURE` | `false` | Enable all security hardening flags at once (`--localhost-only`, `--disable-query-token`, `--require-dashboard-auth`, `--block-dangerous-commands`) |
 
 Create a `.env` file to persist your overrides across restarts:
 
@@ -130,7 +130,7 @@ docker compose up -d
 
 ## Data persistence
 
-The default and stack profiles mount a named Docker volume called `redis_data` to persist your Redis data across container restarts and `docker compose down` calls.
+The default and stack profiles mount named Docker volumes to persist your Redis data across container restarts and `docker compose down` calls. The default profile uses a volume named `redis_data`; the stack profile uses `redis_stack_data`.
 
 ```bash
 # Data survives a restart
@@ -139,14 +139,14 @@ docker compose up -d
 # Your keys are still there
 ```
 
-To wipe all data and start fresh, remove the volume explicitly:
+To wipe all data and start fresh, remove the volumes explicitly:
 
 ```bash
 docker compose down -v
 ```
 
 <Warning>
-  `docker compose down -v` permanently deletes all data stored in `redis_data`. There is no undo. Make sure you have exported or backed up any keys you need before running this command.
+  `docker compose down -v` permanently deletes all data stored in the Redis volumes. There is no undo. Make sure you have exported or backed up any keys you need before running this command.
 </Warning>
 
 ## Port configuration

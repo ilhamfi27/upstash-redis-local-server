@@ -1,5 +1,5 @@
 ---
-title: "Monitor Usage and Browse Keys in the Dashboard"
+title: "Monitor Requests, Quota Savings, and Keys in the Dashboard"
 sidebarTitle: "Dashboard"
 description: "Use the built-in web dashboard to track request counts, measure cloud quota savings, and browse every key stored in your local Redis server in real time."
 ---
@@ -49,12 +49,12 @@ Use the key browser to verify that your application is writing the keys you expe
 
 The dashboard exposes two JSON endpoints you can query directly or integrate into scripts.
 
-### `/api/stats`
+### `/dashboard/api/stats`
 
 Returns the full statistics object:
 
 ```bash
-curl http://localhost:8000/api/stats
+curl http://localhost:8000/dashboard/api/stats
 ```
 
 ```json
@@ -73,12 +73,12 @@ curl http://localhost:8000/api/stats
 }
 ```
 
-### `/api/keys`
+### `/dashboard/api/keys`
 
 Returns all keys with their type, TTL, and value:
 
 ```bash
-curl http://localhost:8000/api/keys
+curl http://localhost:8000/dashboard/api/keys
 ```
 
 ```json
@@ -90,7 +90,7 @@ curl http://localhost:8000/api/keys
 ```
 
 <Tip>
-  Use `curl http://localhost:8000/api/keys | jq` for pretty-printed output in your terminal while debugging.
+  Use `curl http://localhost:8000/dashboard/api/keys | jq` for pretty-printed output in your terminal while debugging.
 </Tip>
 
 ## Enable Dashboard Authentication
@@ -101,14 +101,14 @@ By default the dashboard is open to anyone who can reach the port. If you're run
 UPSTASH_REQUIRE_DASHBOARD_AUTH=true upstash-redis-local
 ```
 
-When this flag is set, the dashboard and its API endpoints require the same token used for Redis commands. Pass the token as a Bearer header:
+When this flag is set, the `/dashboard/api/*` endpoints require the same token used for Redis commands. The dashboard UI page itself remains accessible without a token, but all API data endpoints are protected. Pass the token as a Bearer header:
 
 ```bash
-curl -H "Authorization: Bearer local-dev-token" http://localhost:8000/api/stats
+curl -H "Authorization: Bearer local-dev-token" http://localhost:8000/dashboard/api/stats
 ```
 
 <Warning>
-  Without `UPSTASH_REQUIRE_DASHBOARD_AUTH=true`, anyone on the same network can read your keys and stats through the dashboard. Enable auth whenever the server is reachable beyond your own machine.
+  Without `UPSTASH_REQUIRE_DASHBOARD_AUTH=true`, anyone who can reach the port can read your keys and stats through the dashboard API endpoints. Enable auth whenever the server is reachable beyond your own machine.
 </Warning>
 
 ## Verify Your App Is Hitting the Right Server

@@ -1,5 +1,5 @@
 ---
-title: "Security Hardening for Upstash Redis Local"
+title: "Upstash Redis Local — Security Hardening Options"
 sidebarTitle: "Security"
 description: "Learn how to protect Upstash Redis Local on shared networks and in CI with token hardening, access restrictions, and dangerous-command blocking."
 ---
@@ -17,7 +17,7 @@ Running a local server on your laptop feels safe, but the moment you join a shar
 
 ## Enable everything at once with `--secure`
 
-The fastest way to harden the server is the `--secure` flag (or `UPSTASH_SECURE=true`). It activates all five security options below in a single switch:
+The fastest way to harden the server is the `--secure` flag (or `UPSTASH_SECURE=true`). It activates four security options in a single switch:
 
 ```bash
 # CLI
@@ -102,7 +102,7 @@ With this option enabled the server rejects the following commands with a `403` 
 UPSTASH_REQUIRE_DASHBOARD_AUTH=true    # env var
 ```
 
-The built-in dashboard lets anyone who can reach the server browse and inspect your Redis keys through a web browser — no authentication required by default. Setting `--require-dashboard-auth` adds a `Bearer` token check to every dashboard request.
+The built-in dashboard lets anyone who can reach the server browse and inspect your Redis keys through a web browser. Dashboard authentication is enabled by default (`--require-dashboard-auth` defaults to `true`), so the dashboard requires a valid `Bearer` token out of the box. If you have disabled it and want to re-enable it, set `--require-dashboard-auth` (or `UPSTASH_REQUIRE_DASHBOARD_AUTH=true`).
 
 **Use this when:** you are running the server on a shared network and want to allow API access from your application while keeping the visual key browser private.
 
@@ -125,13 +125,7 @@ By default the server responds with `Access-Control-Allow-Origin: *`, which allo
 
 The default token (`upstash`) is intentionally short and memorable for quick local setup — do not use it in any environment beyond solo development on a private machine.
 
-Generate a cryptographically random token with the built-in helper:
-
-```bash
-upstash-local generate-token
-```
-
-Or use standard shell tools:
+Generate a cryptographically random token with standard shell tools:
 
 ```bash
 # macOS / Linux — 32 random bytes, base64-encoded
@@ -155,7 +149,9 @@ The server checks your token against a list of known-weak values at startup and 
 
 - `upstash` (the default)
 - `local-dev-token`
+- `local-readonly-token`
 - `test-token`
+- `test`
 - `dev`
 - `password`
 
@@ -229,7 +225,8 @@ UPSTASH_DISABLE_QUERY_TOKEN=true
 
 <CardGroup cols={2}>
   <Card title="--secure" icon="shield-halved">
-    Enables all five security options in one flag. Start here for team or CI
+    Enables four security options in one flag: localhost-only, disable-query-token,
+    require-dashboard-auth, and block-dangerous-commands. Start here for team or CI
     environments.
   </Card>
   <Card title="--localhost-only" icon="house-lock">

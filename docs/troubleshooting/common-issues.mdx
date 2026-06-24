@@ -1,5 +1,5 @@
 ---
-title: "Fix Common Upstash Redis Local Issues Fast"
+title: "Common Issues with Upstash Redis Local — Quick Fixes"
 sidebarTitle: "Common Issues"
 description: "Diagnose and resolve the most frequent problems with Upstash Redis Local, from connection errors and Docker networking to auth failures and rate limits."
 ---
@@ -102,10 +102,19 @@ docker compose --profile external up -d upstash-local-external
 
 Every request returns `401 Unauthorized`, even though the server appears to be running.
 
-The token your client is sending doesn't match the token the server was started with. The default token is `local-dev-token`. Test your connection directly with `curl` to isolate the issue:
+The token your client is sending doesn't match the token the server was started with. The default token depends on how you started the server:
+
+- **Docker Compose (`start.sh` or `docker compose up`)** — default is `local-dev-token`
+- **Bare binary (`./bin/upstash-redis-local`)** — default is `upstash`
+
+Test your connection directly with `curl` using the appropriate default to isolate the issue:
 
 ```bash
+# If you started with Docker Compose
 curl "http://localhost:8000/PING?_token=local-dev-token"
+
+# If you started the bare binary directly
+curl "http://localhost:8000/PING?_token=upstash"
 ```
 
 If that succeeds, update your application's `UPSTASH_REDIS_REST_TOKEN` environment variable to match the token you passed when starting the server. If you started the server with a custom token, use that value instead:

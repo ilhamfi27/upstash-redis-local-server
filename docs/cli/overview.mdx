@@ -1,7 +1,7 @@
 ---
 title: "upstash-local CLI: Manage Your Local Redis Dev Env"
 sidebarTitle: "CLI Overview"
-description: "Use the upstash-local CLI to switch profiles, seed test data, export and import keys, and health-check your local Redis server."
+description: "Use the upstash-local CLI to switch profiles, seed test data, export and import keys, and health-check your local Upstash Redis server."
 ---
 
 The `upstash-local` CLI is a companion tool for the Upstash Redis Local server. It gives you a set of focused subcommands to manage everything around local development: switching between local and cloud environments, populating your server with realistic test data, snapshotting and restoring key sets, and verifying that your server is reachable — all from your terminal without writing extra scripts.
@@ -69,7 +69,7 @@ A typical local-development session looks like this:
     Run `upstash-local export` at any point to save a `dump.json` snapshot you can restore later or share with teammates.
   </Step>
   <Step title="Switch to cloud when ready">
-    Run `upstash-local use cloud` to write your production credentials to `.env.cloud` and point your app at Upstash Cloud.
+    Run `upstash-local use cloud` to read your production credentials from `.env.cloud` and point your app at Upstash Cloud.
   </Step>
 </Steps>
 

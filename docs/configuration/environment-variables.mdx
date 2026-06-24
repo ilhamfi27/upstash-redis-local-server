@@ -1,5 +1,5 @@
 ---
-title: "Environment Variables Reference for Local Server"
+title: "Upstash Redis Local — Environment Variables Reference"
 sidebarTitle: "Env Variables"
 description: "Complete reference for every environment variable that configures Upstash Redis Local, plus ready-to-use .env profiles for common development scenarios."
 ---
@@ -166,14 +166,17 @@ UPSTASH_RETRY_DELAY=1000
   `Authorization` header-based auth is accepted when this is enabled.
 </ParamField>
 
-<ParamField path="UPSTASH_CORS_ORIGIN" type="string" default="">
+<ParamField path="UPSTASH_CORS_ORIGIN" type="string" default="*">
   Restricts the `Access-Control-Allow-Origin` response header to a single
-  allowed origin. Leave empty to allow all origins.
+  allowed origin. Defaults to `*`, which allows all origins. Set to a specific
+  origin such as `http://localhost:3000` to lock cross-origin requests to that
+  origin only.
 </ParamField>
 
-<ParamField path="UPSTASH_REQUIRE_DASHBOARD_AUTH" type="boolean" default="false">
-  Set to `true` to require a valid `Bearer` token before the built-in key
-  browser dashboard loads.
+<ParamField path="UPSTASH_REQUIRE_DASHBOARD_AUTH" type="boolean" default="true">
+  Controls whether a valid `Bearer` token is required to load the built-in key
+  browser dashboard. Enabled by default. Set to `false` only on a trusted
+  private machine where unauthenticated dashboard access is acceptable.
 </ParamField>
 
 <ParamField path="UPSTASH_BLOCK_DANGEROUS_COMMANDS" type="boolean" default="false">

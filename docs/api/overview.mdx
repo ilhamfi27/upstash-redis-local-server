@@ -1,5 +1,5 @@
 ---
-title: "Upstash REST API Reference — Local Server"
+title: "Upstash Redis Local REST API Overview and Reference"
 sidebarTitle: "Overview"
 description: "Complete reference for the Upstash Redis Local REST API — authentication methods, response formats, optional headers, and all available endpoints."
 ---
@@ -125,7 +125,7 @@ curl http://localhost:8000/health
 | `/publish/<channel>` | `POST` | Publish a message to a Pub/Sub channel |
 | `/subscribe/<channel>` | `GET` | Subscribe to a channel via Server-Sent Events |
 | `/monitor` | `GET` | Stream live Redis `MONITOR` output via Server-Sent Events |
-| `/health` | `GET` | Check server and Redis connection health |
+| `/health` | `GET` or `POST` | Check server and Redis connection health |
 | `/ready` | `GET` | Alias for `/health` |
 
 <Note>

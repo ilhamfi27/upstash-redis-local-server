@@ -1,16 +1,16 @@
 ---
 title: "How Upstash Redis Local Works Under the Hood"
 sidebarTitle: "How It Works"
-description: "Learn how upstash-redis-local bridges the Upstash Redis REST API to a local Redis instance using a lightweight Go HTTP server."
+description: "Learn how upstash-redis-local bridges the Upstash Redis REST API to a local Redis instance using a lightweight Go HTTP server for local development."
 ---
 
-Upstash Redis Local is a thin Go HTTP server built on [fasthttp](https://github.com/valyala/fasthttp) that sits between your application and a local Redis process. It speaks the exact same REST API as the Upstash cloud service, so any SDK, client library, or curl command that works against Upstash cloud works against it without modification. The server translates every incoming HTTP request into one or more Redis commands, executes them through a connection pool, and returns a JSON response — all within a single process you can run locally or in Docker.
+Upstash Redis Local is a lightweight Go HTTP server that sits between your application and a local Redis process. It speaks the exact same REST API as the Upstash cloud service, so any SDK, client library, or curl command that works against Upstash cloud works against it without modification. The server translates every incoming HTTP request into one or more Redis commands, executes them through a connection pool, and returns a JSON response — all within a single process you can run locally or in Docker.
 
 ## Architecture overview
 
 The server is composed of three layers:
 
-1. **HTTP layer** — fasthttp handles incoming REST requests, validates tokens, and routes commands.
+1. **HTTP layer** — the server handles incoming REST requests, validates tokens, and routes commands.
 2. **Translation layer** — command names and arguments are extracted from the URL path or JSON body, validated, and mapped to native Redis protocol (RESP) calls.
 3. **Redis connection pool** — a pool of persistent TCP connections to a local Redis instance handles the actual command execution and returns results to the HTTP layer.
 
@@ -18,7 +18,7 @@ The server is composed of three layers:
 Your App / SDK
       │  HTTP REST
       ▼
-upstash-redis-local (fasthttp)
+upstash-redis-local
       │  RESP (Redis protocol)
       ▼
 Local Redis (any flavor)

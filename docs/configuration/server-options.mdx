@@ -1,5 +1,5 @@
 ---
-title: "Configure the Upstash Redis Local Server"
+title: "Upstash Redis Local — Server Configuration Options"
 sidebarTitle: "Server Options"
 description: "Full reference for every CLI flag that controls how Upstash Redis Local binds, authenticates, connects to Redis, and simulates cloud quota limits."
 ---
@@ -71,16 +71,17 @@ These flags harden the server against unintended access. You can enable them ind
   history. Maps to `UPSTASH_DISABLE_QUERY_TOKEN`.
 </ParamField>
 
-<ParamField path="--cors-origin" type="string" default="">
+<ParamField path="--cors-origin" type="string" default="*">
   Restricts the `Access-Control-Allow-Origin` header to a single allowed
-  origin, for example `http://localhost:3000`. Leave empty to allow all origins
-  (`*`). Maps to `UPSTASH_CORS_ORIGIN`.
+  origin, for example `http://localhost:3000`. Defaults to `*`, which allows
+  all origins. Maps to `UPSTASH_CORS_ORIGIN`.
 </ParamField>
 
-<ParamField path="--require-dashboard-auth" type="boolean" default="false">
+<ParamField path="--require-dashboard-auth" type="boolean" default="true">
   Requires a valid `Bearer` token to access the built-in key browser
-  dashboard. Useful on shared networks where you want to allow API access while
-  keeping the dashboard private. Maps to `UPSTASH_REQUIRE_DASHBOARD_AUTH`.
+  dashboard. Enabled by default. Disable only if you need unauthenticated
+  dashboard access on a trusted private machine. Maps to
+  `UPSTASH_REQUIRE_DASHBOARD_AUTH`.
 </ParamField>
 
 <ParamField path="--block-dangerous-commands" type="boolean" default="false">
@@ -91,10 +92,11 @@ These flags harden the server against unintended access. You can enable them ind
 </ParamField>
 
 <ParamField path="--secure" type="boolean" default="false">
-  Convenience flag that enables all five security options above in a single
-  switch: `--localhost-only`, `--disable-query-token`, `--cors-origin` (must
-  still be set separately), `--require-dashboard-auth`, and
-  `--block-dangerous-commands`. Maps to `UPSTASH_SECURE`.
+  Convenience flag that enables four security options in a single switch:
+  `--localhost-only`, `--disable-query-token`, `--require-dashboard-auth`, and
+  `--block-dangerous-commands`. Note that `--cors-origin` is not set
+  automatically — supply it separately if you need to restrict browser origins.
+  Maps to `UPSTASH_SECURE`.
 </ParamField>
 
 ## Simulation
