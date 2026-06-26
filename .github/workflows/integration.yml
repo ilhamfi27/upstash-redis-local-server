@@ -2,9 +2,9 @@ name: Integration Test
 
 on:
   push:
-    branches: [main, master, fix/*]
+    branches: [main, master, dev, fix/*]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, dev]
 
 jobs:
   integration:
@@ -31,7 +31,8 @@ jobs:
         run: curl -sf http://localhost:8000/health
 
       - name: Test PING
-        run: curl -sf -H "Authorization: Bearer local-dev-token" http://localhost:8000/PING
+        run: |
+          curl -sf -H "Authorization: Bearer local-dev-token" http://localhost:8000/PING
 
       - name: Test pipeline
         run: |
@@ -48,7 +49,8 @@ jobs:
             -d '[["SET","tx-test","val"],["GET","tx-test"]]'
 
       - name: Test dashboard stats
-        run: curl -sf http://localhost:8000/dashboard/api/stats
+        run: |
+          curl -sf -H "Authorization: Bearer local-dev-token" http://localhost:8000/dashboard/api/stats
 
       - name: Run unit tests
         run: go test -v ./...
