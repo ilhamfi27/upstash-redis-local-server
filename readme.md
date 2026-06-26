@@ -15,10 +15,15 @@ The `upstash-redis-local` command starts a local web server that provides a REST
 - ✅ Read-only token support (like Upstash cloud)
 - ✅ Usage dashboard at `/dashboard` — see cloud quota saved
 - ✅ Rate-limit simulator (`--simulate-quota`, `--simulate-rps`)
+- ✅ **QStash emulator** — local HTTP message queue with delays, retries, DLQ (`--enable-qstash`)
+- ✅ **Chaos injection** — simulate slow/flaky Upstash (`--inject-latency`, `--inject-error-rate`)
+- ✅ **Cloud-parity strict mode** — catch "works locally, breaks in prod" (`--strict-upstash`)
+- ✅ **Record & replay** — capture a session and replay it (`--record`, `upstash-local replay`)
+- ✅ Security hardening: `--secure`, dashboard auth, dangerous-command blocking
 - ✅ CORS enabled for browser/edge dev
 - ✅ Docker Compose profiles: default, external Redis, Redis Stack
-- ✅ CLI tools: `upstash-local use dev`, seed, export, import
-- ✅ Connection pooling for reliability
+- ✅ CLI tools: `upstash-local use dev`, seed, export, import, generate-token, replay
+- ✅ Connection pooling + graceful shutdown
 - ✅ Tiny Docker image (~10MB)
 
 This project is inspired by [upstashdis](https://github.com/mna/upstashdis) but uses `fasthttp` for better performance.
@@ -84,6 +89,41 @@ Simulate cloud limits for testing fallback logic:
 ```bash
 upstash-redis-local --simulate-quota 10000 --simulate-rps 100
 ```
+
+## 🧪 Testing & Reliability Tools
+
+```bash
+# Simulate a slow, flaky Upstash (test your retry/fallback logic)
+upstash-redis-local --inject-latency 200 --inject-error-rate 0.1
+
+# Reject commands Upstash REST doesn't support (catch prod bugs early)
+upstash-redis-local --strict-upstash
+
+# Record every command, then replay the session later
+upstash-redis-local --record session.jsonl
+./bin/upstash-local replay --input session.jsonl
+```
+
+See [docs/guides/testing-tools.mdx](./docs/guides/testing-tools.mdx).
+
+## 📨 QStash Emulator
+
+A local HTTP message queue (like [Upstash QStash](https://upstash.com/docs/qstash)) for background jobs, webhooks, and email/notification queues:
+
+```bash
+upstash-redis-local --enable-qstash
+
+# Queue a message for delivery to a URL (with retries + DLQ)
+curl -X POST "http://localhost:8000/v2/publish/?url=https://example.com/webhook" \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Upstash-Delay: 10s" \
+  -d '{"email":"welcome@app.com"}'
+
+curl http://localhost:8000/v2/messages -H "Authorization: Bearer local-dev-token"
+curl http://localhost:8000/v2/dlq -H "Authorization: Bearer local-dev-token"
+```
+
+See [docs/guides/qstash.mdx](./docs/guides/qstash.mdx).
 
 ## 🔧 CLI Commands
 

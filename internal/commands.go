@@ -27,6 +27,9 @@ func (s *Server) executeCommand(auth *authResult, commandName string, args ...in
 	if s.Metrics != nil {
 		s.Metrics.Record(cmdUpper)
 	}
+	if s.Recorder != nil {
+		s.Recorder.Record(commandName, args)
+	}
 
 	conn := s.RedisPool.Get()
 	defer conn.Close()

@@ -33,6 +33,12 @@ type Cmd struct {
 	RequireDashboardAuth   bool
 	BlockDangerousCommands bool
 	SecureMode             bool
+	StrictUpstash          bool
+	LogRequests            bool
+	InjectLatencyMs        int
+	InjectErrorRate        float64
+	EnableQStash           bool
+	RecordFile             string
 }
 
 func (c *Cmd) Validate() error {
@@ -73,6 +79,15 @@ func getEnvInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
+		}
+	}
+	return defaultValue
+}
+
 func getEnvBool(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		switch strings.ToLower(value) {
@@ -107,6 +122,12 @@ func main() {
 	requireDashboardAuth := flag.Bool("require-dashboard-auth", getEnvBool("UPSTASH_REQUIRE_DASHBOARD_AUTH", true), "Require auth for dashboard API")
 	blockDangerous := flag.Bool("block-dangerous-commands", getEnvBool("UPSTASH_BLOCK_DANGEROUS_COMMANDS", false), "Block FLUSHALL, CONFIG, SHUTDOWN, etc.")
 	secureMode := flag.Bool("secure", getEnvBool("UPSTASH_SECURE", false), "Enable all security hardening flags")
+	strictUpstash := flag.Bool("strict-upstash", getEnvBool("UPSTASH_STRICT", false), "Reject commands unsupported by Upstash REST")
+	logRequests := flag.Bool("log-requests", getEnvBool("UPSTASH_LOG_REQUESTS", false), "Log every request to stdout")
+	injectLatency := flag.Int("inject-latency", getEnvInt("UPSTASH_INJECT_LATENCY_MS", 0), "Add N ms latency to every request")
+	injectErrorRate := flag.Float64("inject-error-rate", getEnvFloat("UPSTASH_INJECT_ERROR_RATE", 0), "Fail requests with probability 0.0-1.0")
+	enableQStash := flag.Bool("enable-qstash", getEnvBool("UPSTASH_ENABLE_QSTASH", false), "Enable local QStash message queue emulator")
+	recordFile := flag.String("record", getEnvOrDefault("UPSTASH_RECORD_FILE", ""), "Record executed commands to a JSONL file for replay")
 	help := flag.Bool("help", false, "Print help message")
 	flag.Parse()
 
@@ -134,6 +155,12 @@ func main() {
 		RequireDashboardAuth:   *requireDashboardAuth,
 		BlockDangerousCommands: *blockDangerous,
 		SecureMode:             *secureMode,
+		StrictUpstash:          *strictUpstash,
+		LogRequests:            *logRequests,
+		InjectLatencyMs:        *injectLatency,
+		InjectErrorRate:        *injectErrorRate,
+		EnableQStash:           *enableQStash,
+		RecordFile:             *recordFile,
 	}
 
 	if *help {
@@ -175,8 +202,39 @@ func main() {
 		CORSOrigin:             cmd.CORSOrigin,
 		RequireDashboardAuth:   cmd.RequireDashboardAuth,
 		BlockDangerousCommands: cmd.BlockDangerousCommands,
+		StrictUpstash:          cmd.StrictUpstash,
 	}
 	internal.LogSecurityWarnings(logger, cmd.Addr, cmd.ApiToken, cmd.ReadOnlyToken, sec, cmd.SecureMode)
+
+	var chaos *internal.ChaosConfig
+	if cmd.InjectLatencyMs > 0 || cmd.InjectErrorRate > 0 {
+		chaos = &internal.ChaosConfig{
+			Latency:   time.Duration(cmd.InjectLatencyMs) * time.Millisecond,
+			ErrorRate: cmd.InjectErrorRate,
+		}
+		logger.Info("chaos injection enabled",
+			zap.Int("latency_ms", cmd.InjectLatencyMs),
+			zap.Float64("error_rate", cmd.InjectErrorRate),
+		)
+	}
+
+	var recorder *internal.Recorder
+	if cmd.RecordFile != "" {
+		recorder, err = internal.NewRecorder(cmd.RecordFile)
+		if err != nil {
+			log.Fatalf("failed to open record file: %v", err)
+		}
+		defer recorder.Close()
+		logger.Info("recording commands", zap.String("file", cmd.RecordFile))
+	}
+
+	var qstash *internal.QStash
+	if cmd.EnableQStash {
+		qstash = internal.NewQStash(pool, logger)
+		qstash.Start()
+		defer qstash.Stop()
+		logger.Info("QStash emulator enabled (POST /v2/publish/<url>, GET /v2/messages, GET /v2/dlq)")
+	}
 
 	server := internal.Server{
 		Address:       cmd.Addr,
@@ -187,6 +245,13 @@ func main() {
 		Metrics:       internal.NewMetrics(),
 		RateLimiter:   limiter,
 		Security:      sec,
+		Chaos:         chaos,
+		LogRequests:   cmd.LogRequests,
+		Recorder:      recorder,
+		QStash:        qstash,
+		Dial: func() (redis.Conn, error) {
+			return dialWithRetry(cmd.RedisAddr, 1, cmd.RetryDelayMs, logger)
+		},
 	}
 	server.Serve()
 }
@@ -225,6 +290,12 @@ ARGUMENTS:
 	--require-dashboard-auth  Require auth for dashboard API (default: true)
 	--block-dangerous-commands Block FLUSHALL, CONFIG, SHUTDOWN, etc.
 	--secure                  Enable all hardening flags above
+	--strict-upstash          Reject commands unsupported by Upstash REST
+	--log-requests            Log every request to stdout
+	--inject-latency   MS     Add N ms latency to every request (chaos testing)
+	--inject-error-rate RATE  Fail requests with probability 0.0-1.0
+	--enable-qstash           Enable local QStash message queue emulator
+	--record           FILE   Record executed commands to a JSONL file
 	--help                    Print this message
 
 ENVIRONMENT VARIABLES:
@@ -240,6 +311,12 @@ ENVIRONMENT VARIABLES:
 	UPSTASH_REQUIRE_DASHBOARD_AUTH Require dashboard auth (default: true)
 	UPSTASH_BLOCK_DANGEROUS_COMMANDS Block destructive Redis commands
 	UPSTASH_SECURE                Enable all security hardening
+	UPSTASH_STRICT                Reject commands unsupported by Upstash REST
+	UPSTASH_LOG_REQUESTS          Log every request
+	UPSTASH_INJECT_LATENCY_MS     Add latency to every request
+	UPSTASH_INJECT_ERROR_RATE     Simulated failure probability (0.0-1.0)
+	UPSTASH_ENABLE_QSTASH         Enable QStash emulator
+	UPSTASH_RECORD_FILE           Record commands to this file
 
 ENDPOINTS:
 	/health          Health check (no auth)
@@ -249,6 +326,9 @@ ENDPOINTS:
 	/monitor         SSE monitor stream
 	/publish/:ch/:msg  Publish message
 	/subscribe/:ch   SSE subscribe stream
+	/v2/publish/:url QStash: queue an HTTP message (needs --enable-qstash)
+	/v2/messages     QStash: list queued/delivered messages
+	/v2/dlq          QStash: list dead-letter messages
 `, Version)
 }
 

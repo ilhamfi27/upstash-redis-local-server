@@ -3,21 +3,54 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/valyala/fasthttp"
 	"go.uber.org/zap"
 )
 
-// Serve starts the HTTP server.
+// Serve starts the HTTP server and blocks until a shutdown signal is received.
 func (s *Server) Serve() {
+	srv := &fasthttp.Server{
+		Handler:               s.requestHandler,
+		StreamRequestBody:     true,
+		NoDefaultServerHeader: true,
+	}
+
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		sig := <-sigCh
+		s.Logger.Info("shutdown signal received, draining connections", zap.String("signal", sig.String()))
+		if err := srv.Shutdown(); err != nil {
+			s.Logger.Error("graceful shutdown failed", zap.Error(err))
+		}
+	}()
+
 	s.Logger.Info("upstash-redis-local booting on", zap.String("addr", s.Address))
-	if err := fasthttp.ListenAndServe(s.Address, s.requestHandler); err != nil {
+	if err := srv.ListenAndServe(s.Address); err != nil {
 		s.Logger.Fatal("Error in serving", zap.Error(err))
 	}
+	s.Logger.Info("server stopped cleanly")
 }
 
 func (s *Server) requestHandler(ctx *fasthttp.RequestCtx) {
+	if s.LogRequests {
+		start := time.Now()
+		defer func() {
+			s.Logger.Info("request",
+				zap.ByteString("method", ctx.Method()),
+				zap.ByteString("path", ctx.Path()),
+				zap.Int("status", ctx.Response.StatusCode()),
+				zap.Duration("took", time.Since(start)),
+			)
+		}()
+	}
+
 	s.setCORS(ctx)
 	if string(ctx.Method()) == "OPTIONS" {
 		ctx.SetStatusCode(fasthttp.StatusNoContent)
@@ -68,6 +101,29 @@ func (s *Server) requestHandler(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		s.respond(ctx, errorResult{Error: "Unauthorised"}, fasthttp.StatusUnauthorized)
 		return
+	}
+
+	if s.Chaos != nil {
+		s.Chaos.applyLatency()
+		if msg, hit := s.Chaos.maybeError(); hit {
+			s.respond(ctx, errorResult{Error: msg}, fasthttp.StatusInternalServerError)
+			return
+		}
+	}
+
+	if s.QStash != nil {
+		original := string(ctx.URI().PathOriginal())
+		switch {
+		case strings.HasPrefix(original, "/v2/publish/"):
+			s.handleQStashPublish(ctx, strings.TrimPrefix(original, "/v2/publish/"))
+			return
+		case path == "/v2/messages":
+			s.handleQStashList(ctx)
+			return
+		case path == "/v2/dlq":
+			s.handleQStashDLQ(ctx)
+			return
+		}
 	}
 
 	switch {

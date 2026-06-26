@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,6 +26,10 @@ func startTestServer(t *testing.T) (*internal.Server, *miniredis.Miniredis, stri
 }
 
 func startTestServerWithSecurity(t *testing.T, sec internal.SecurityConfig) (*internal.Server, *miniredis.Miniredis, string) {
+	return startTestServerOpts(t, func(s *internal.Server) { s.Security = sec })
+}
+
+func startTestServerOpts(t *testing.T, configure func(*internal.Server)) (*internal.Server, *miniredis.Miniredis, string) {
 	t.Helper()
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -44,7 +52,13 @@ func startTestServerWithSecurity(t *testing.T, sec internal.SecurityConfig) (*in
 		RedisPool:     pool,
 		Logger:        logger,
 		Metrics:       internal.NewMetrics(),
-		Security:      sec,
+		Security:      internal.SecurityConfig{RequireDashboardAuth: true},
+		Dial: func() (redis.Conn, error) {
+			return redis.Dial("tcp", mr.Addr())
+		},
+	}
+	if configure != nil {
+		configure(server)
 	}
 
 	go server.Serve()
@@ -267,6 +281,268 @@ func TestResolveListenAddr(t *testing.T) {
 	}
 	if got := internal.ResolveListenAddr("0.0.0.0:8000", true); got != "127.0.0.1:8000" {
 		t.Fatalf("expected 127.0.0.1:8000, got %s", got)
+	}
+}
+
+func TestStrictUpstashBlocksCommand(t *testing.T) {
+	_, mr, base := startTestServerWithSecurity(t, internal.SecurityConfig{
+		StrictUpstash:        true,
+		RequireDashboardAuth: true,
+	})
+	defer mr.Close()
+
+	req, _ := http.NewRequest("GET", base+"/SUBSCRIBE/chan", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected SUBSCRIBE blocked in strict mode, got %d", resp.StatusCode)
+	}
+
+	// A supported command still works.
+	okReq, _ := http.NewRequest("GET", base+"/PING", nil)
+	okReq.Header.Set("Authorization", "Bearer test-token")
+	okResp, err := http.DefaultClient.Do(okReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer okResp.Body.Close()
+	if okResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected PING to work in strict mode, got %d", okResp.StatusCode)
+	}
+}
+
+func TestChaosErrorInjection(t *testing.T) {
+	_, mr, base := startTestServerOpts(t, func(s *internal.Server) {
+		s.Chaos = &internal.ChaosConfig{ErrorRate: 1.0}
+	})
+	defer mr.Close()
+
+	req, _ := http.NewRequest("GET", base+"/PING", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected injected 500, got %d", resp.StatusCode)
+	}
+}
+
+func TestChaosLatencyInjection(t *testing.T) {
+	_, mr, base := startTestServerOpts(t, func(s *internal.Server) {
+		s.Chaos = &internal.ChaosConfig{Latency: 150 * time.Millisecond}
+	})
+	defer mr.Close()
+
+	req, _ := http.NewRequest("GET", base+"/PING", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	start := time.Now()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if elapsed := time.Since(start); elapsed < 150*time.Millisecond {
+		t.Fatalf("expected at least 150ms latency, got %v", elapsed)
+	}
+}
+
+func TestScanKeysDashboard(t *testing.T) {
+	_, mr, base := startTestServer(t)
+	defer mr.Close()
+
+	for _, k := range []string{"dev:a", "dev:b", "other:c"} {
+		req, _ := http.NewRequest("GET", base+"/SET/"+k+"/v", nil)
+		req.Header.Set("Authorization", "Bearer test-token")
+		http.DefaultClient.Do(req)
+	}
+
+	req, _ := http.NewRequest("GET", base+"/dashboard/api/keys?pattern=dev:*", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var out map[string]interface{}
+	json.Unmarshal(readBody(t, resp), &out)
+	if out["count"].(float64) != 2 {
+		t.Fatalf("expected 2 keys matching dev:*, got %v", out["count"])
+	}
+}
+
+func TestReadOnlyAllowsScan(t *testing.T) {
+	_, mr, base := startTestServer(t)
+	defer mr.Close()
+
+	req, _ := http.NewRequest("GET", base+"/SCAN/0", nil)
+	req.Header.Set("Authorization", "Bearer readonly-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected SCAN allowed for readonly token, got %d", resp.StatusCode)
+	}
+}
+
+func TestDailyMetricsField(t *testing.T) {
+	_, mr, base := startTestServer(t)
+	defer mr.Close()
+
+	ping, _ := http.NewRequest("GET", base+"/PING", nil)
+	ping.Header.Set("Authorization", "Bearer test-token")
+	http.DefaultClient.Do(ping)
+
+	req, _ := http.NewRequest("GET", base+"/dashboard/api/stats", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var stats map[string]interface{}
+	json.Unmarshal(readBody(t, resp), &stats)
+	if _, ok := stats["requests_today"]; !ok {
+		t.Fatalf("expected requests_today in stats, got %v", stats)
+	}
+}
+
+func TestQStashDelivers(t *testing.T) {
+	received := make(chan string, 1)
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- string(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer dest.Close()
+
+	srv, mr, base := startTestServerOpts(t, func(s *internal.Server) {
+		q := internal.NewQStash(s.RedisPool, s.Logger)
+		q.SetPollInterval(50 * time.Millisecond)
+		s.QStash = q
+	})
+	defer mr.Close()
+	srv.QStash.Start()
+	defer srv.QStash.Stop()
+
+	publishURL := base + "/v2/publish/" + url.QueryEscape(dest.URL)
+	req, _ := http.NewRequest("POST", publishURL, strings.NewReader(`{"email":"hi"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on publish, got %d", resp.StatusCode)
+	}
+	var pub map[string]string
+	json.Unmarshal(readBody(t, resp), &pub)
+	if pub["messageId"] == "" {
+		t.Fatal("expected a messageId in publish response")
+	}
+
+	select {
+	case body := <-received:
+		if body != `{"email":"hi"}` {
+			t.Fatalf("destination got wrong body: %s", body)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("message was not delivered within 3s")
+	}
+}
+
+func TestQStashDeadLetterQueue(t *testing.T) {
+	// Destination always fails, so the message should land in the DLQ.
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer dest.Close()
+
+	srv, mr, base := startTestServerOpts(t, func(s *internal.Server) {
+		q := internal.NewQStash(s.RedisPool, s.Logger)
+		q.SetPollInterval(20 * time.Millisecond)
+		s.QStash = q
+	})
+	defer mr.Close()
+	srv.QStash.Start()
+	defer srv.QStash.Stop()
+
+	publishURL := base + "/v2/publish/" + url.QueryEscape(dest.URL)
+	req, _ := http.NewRequest("POST", publishURL, strings.NewReader(`x`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Upstash-Retries", "0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("message never reached the DLQ")
+		default:
+		}
+		dlqReq, _ := http.NewRequest("GET", base+"/v2/dlq", nil)
+		dlqReq.Header.Set("Authorization", "Bearer test-token")
+		dlqResp, err := http.DefaultClient.Do(dlqReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]interface{}
+		json.Unmarshal(readBody(t, dlqResp), &out)
+		dlqResp.Body.Close()
+		if count, ok := out["count"].(float64); ok && count >= 1 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestRecorder(t *testing.T) {
+	recPath := t.TempDir() + "/session.jsonl"
+	rec, err := internal.NewRecorder(recPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, mr, base := startTestServerOpts(t, func(s *internal.Server) {
+		s.Recorder = rec
+	})
+	defer mr.Close()
+
+	for _, path := range []string{"/SET/foo/bar", "/GET/foo"} {
+		req, _ := http.NewRequest("GET", base+path, nil)
+		req.Header.Set("Authorization", "Bearer test-token")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	rec.Close()
+
+	data, err := os.ReadFile(recPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 recorded commands, got %d: %q", len(lines), string(data))
+	}
+	if !strings.Contains(lines[0], "SET") || !strings.Contains(lines[1], "GET") {
+		t.Fatalf("recorded commands unexpected: %v", lines)
 	}
 }
 

@@ -22,10 +22,14 @@ func (s *Server) handlePublish(ctx *fasthttp.RequestCtx, auth *authResult, segme
 }
 
 func (s *Server) handleSubscribeSSE(ctx *fasthttp.RequestCtx, auth *authResult, channel string) {
-	conn := s.RedisPool.Get()
-	defer conn.Close()
+	conn, err := s.streamConn()
+	if err != nil {
+		s.respond(ctx, errorResult{Error: "ERR redis connection failed"}, fasthttp.StatusServiceUnavailable)
+		return
+	}
 	if auth != nil {
 		if err := s.authRedisConn(conn, auth.creds); err != nil {
+			conn.Close()
 			s.respond(ctx, errorResult{Error: err.Error()}, fasthttp.StatusBadRequest)
 			return
 		}
@@ -33,6 +37,7 @@ func (s *Server) handleSubscribeSSE(ctx *fasthttp.RequestCtx, auth *authResult, 
 
 	psc := redis.PubSubConn{Conn: conn}
 	if err := psc.Subscribe(channel); err != nil {
+		conn.Close()
 		s.respond(ctx, errorResult{Error: err.Error()}, fasthttp.StatusBadRequest)
 		return
 	}
@@ -43,14 +48,27 @@ func (s *Server) handleSubscribeSSE(ctx *fasthttp.RequestCtx, auth *authResult, 
 	ctx.Response.Header.Set("Connection", "keep-alive")
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-		fmt.Fprintf(w, "data: subscribe,%s,1\n\n", channel)
-		w.Flush()
+		// Closing the connection unblocks psc.Receive() when we return.
+		defer psc.Close()
+		defer conn.Close()
+
+		if _, err := fmt.Fprintf(w, "data: subscribe,%s,1\n\n", channel); err != nil {
+			return
+		}
+		if err := w.Flush(); err != nil {
+			return
+		}
 
 		for {
 			switch msg := psc.Receive().(type) {
 			case redis.Message:
-				fmt.Fprintf(w, "data: message,%s,%s\n\n", msg.Channel, msg.Data)
-				w.Flush()
+				if _, err := fmt.Fprintf(w, "data: message,%s,%s\n\n", msg.Channel, msg.Data); err != nil {
+					return
+				}
+				if err := w.Flush(); err != nil {
+					// Client disconnected — stop and release the connection.
+					return
+				}
 			case error:
 				s.Logger.Warn("subscribe stream ended", zap.Error(msg))
 				return
@@ -60,16 +78,21 @@ func (s *Server) handleSubscribeSSE(ctx *fasthttp.RequestCtx, auth *authResult, 
 }
 
 func (s *Server) handleMonitorSSE(ctx *fasthttp.RequestCtx, auth *authResult) {
-	conn := s.RedisPool.Get()
-	defer conn.Close()
+	conn, err := s.streamConn()
+	if err != nil {
+		s.respond(ctx, errorResult{Error: "ERR redis connection failed"}, fasthttp.StatusServiceUnavailable)
+		return
+	}
 	if auth != nil {
 		if err := s.authRedisConn(conn, auth.creds); err != nil {
+			conn.Close()
 			s.respond(ctx, errorResult{Error: err.Error()}, fasthttp.StatusBadRequest)
 			return
 		}
 	}
 
 	if err := conn.Send("MONITOR"); err != nil {
+		conn.Close()
 		s.respond(ctx, errorResult{Error: err.Error()}, fasthttp.StatusBadRequest)
 		return
 	}
@@ -80,16 +103,26 @@ func (s *Server) handleMonitorSSE(ctx *fasthttp.RequestCtx, auth *authResult) {
 	ctx.Response.Header.Set("Connection", "keep-alive")
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-		fmt.Fprintf(w, "data: \"OK\"\n\n")
-		w.Flush()
+		defer conn.Close()
+
+		if _, err := fmt.Fprintf(w, "data: \"OK\"\n\n"); err != nil {
+			return
+		}
+		if err := w.Flush(); err != nil {
+			return
+		}
 
 		for {
 			line, err := redis.String(conn.Receive())
 			if err != nil {
 				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", line)
-			w.Flush()
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
+				return
+			}
+			if err := w.Flush(); err != nil {
+				return
+			}
 		}
 	})
 }

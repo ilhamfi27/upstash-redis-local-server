@@ -68,6 +68,13 @@ func main() {
 		ping(url, token)
 	case "generate-token":
 		generateToken()
+	case "replay":
+		fs := flag.NewFlagSet("replay", flag.ExitOnError)
+		input := fs.String("input", "session.jsonl", "Recorded JSONL file")
+		url := fs.String("url", localURL, "REST URL")
+		token := fs.String("token", localToken, "API token")
+		fs.Parse(os.Args[2:])
+		replay(*url, *token, *input)
 	default:
 		printUsage()
 		os.Exit(1)
@@ -85,7 +92,38 @@ Commands:
   export           Export keys to JSON (--output dump.json)
   import           Import keys from JSON (--input dump.json)
   ping [url]       Test REST connection
-  generate-token   Generate random local API tokens`)
+  generate-token   Generate random local API tokens
+  replay           Replay a recorded session (--input session.jsonl)`)
+}
+
+func replay(url, token, input string) {
+	data, err := os.ReadFile(input)
+	if err != nil {
+		fmt.Printf("Error reading %s: %v\n", input, err)
+		os.Exit(1)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	ok, failed := 0, 0
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var cmd []interface{}
+		if err := json.Unmarshal([]byte(line), &cmd); err != nil {
+			fmt.Printf("  line %d: skipped (bad JSON)\n", i+1)
+			failed++
+			continue
+		}
+		_, code, err := restPost(url, token, cmd)
+		if err != nil || code >= 400 {
+			failed++
+			continue
+		}
+		ok++
+	}
+	fmt.Printf("✅ Replayed %d commands (%d ok, %d failed) from %s\n", ok+failed, ok, failed, input)
 }
 
 func useProfile(name string) {

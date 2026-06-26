@@ -29,7 +29,7 @@ func (s *Server) handleDashboardKeys(ctx *fasthttp.RequestCtx) {
 	conn := s.RedisPool.Get()
 	defer conn.Close()
 
-	keys, err := redis.Strings(conn.Do("KEYS", pattern))
+	keys, err := scanKeys(conn, pattern, 1000)
 	if err != nil {
 		s.writeJSON(ctx, errorResult{Error: err.Error()}, fasthttp.StatusBadRequest)
 		return
@@ -51,6 +51,33 @@ func (s *Server) handleDashboardKeys(ctx *fasthttp.RequestCtx) {
 	}
 
 	s.writeJSON(ctx, map[string]interface{}{"keys": items, "count": len(items)}, fasthttp.StatusOK)
+}
+
+// scanKeys iterates keys with a non-blocking SCAN cursor instead of KEYS.
+// limit <= 0 returns everything; otherwise it stops after roughly limit keys.
+func scanKeys(conn redis.Conn, pattern string, limit int) ([]string, error) {
+	if pattern == "" {
+		pattern = "*"
+	}
+	var keys []string
+	cursor := 0
+	for {
+		vals, err := redis.Values(conn.Do("SCAN", cursor, "MATCH", pattern, "COUNT", 200))
+		if err != nil {
+			return nil, err
+		}
+		cursor, _ = redis.Int(vals[0], nil)
+		batch, _ := redis.Strings(vals[1], nil)
+		keys = append(keys, batch...)
+		if limit > 0 && len(keys) >= limit {
+			keys = keys[:limit]
+			break
+		}
+		if cursor == 0 {
+			break
+		}
+	}
+	return keys, nil
 }
 
 func readKeyValue(conn redis.Conn, key, keyType string) interface{} {
@@ -80,7 +107,7 @@ func (s *Server) ExportData(pattern string) ([]map[string]interface{}, error) {
 	conn := s.RedisPool.Get()
 	defer conn.Close()
 
-	keys, err := redis.Strings(conn.Do("KEYS", pattern))
+	keys, err := scanKeys(conn, pattern, 0)
 	if err != nil {
 		return nil, err
 	}

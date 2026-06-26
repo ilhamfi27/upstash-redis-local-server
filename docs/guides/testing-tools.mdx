@@ -1,0 +1,95 @@
+---
+title: "Testing Tools"
+description: "Chaos injection, cloud-parity strict mode, request logging, and record & replay."
+---
+
+These tools help you test how your app behaves against a realistic — and sometimes hostile — Upstash, all locally and without burning cloud quota.
+
+## Chaos injection
+
+Simulate a slow or flaky upstream so you can verify timeouts, retries, and fallback logic.
+
+| Flag | Env | Effect |
+| --- | --- | --- |
+| `--inject-latency <ms>` | `UPSTASH_INJECT_LATENCY_MS` | Adds fixed latency to every request |
+| `--inject-error-rate <0.0–1.0>` | `UPSTASH_INJECT_ERROR_RATE` | Fails requests with the given probability |
+
+```bash
+# Every request is 200ms slower and 10% of requests fail with a 500
+upstash-redis-local --inject-latency 200 --inject-error-rate 0.1
+```
+
+A failed request returns HTTP `500`:
+
+```json
+{ "error": "ERR simulated upstream failure (chaos injection)" }
+```
+
+<Tip>
+Pair this with the [rate-limit simulator](/guides/rate-limits) to reproduce production conditions like "Upstash is slow and we're near our quota".
+</Tip>
+
+## Cloud-parity strict mode
+
+Upstash REST rejects commands that don't fit a request/response model (blocking pops, `SUBSCRIBE`, `MULTI/EXEC`, `MONITOR`, replication, etc.). By default this proxy allows them — convenient, but it means code can work locally and **break in production**.
+
+Enable strict mode to reject exactly what Upstash REST rejects:
+
+```bash
+upstash-redis-local --strict-upstash
+```
+
+```bash
+curl http://localhost:8000/SUBSCRIBE/news -H "Authorization: Bearer local-dev-token"
+# { "error": "ERR command 'SUBSCRIBE' is not supported by Upstash REST (strict mode)" }
+```
+
+<Tip>
+Turn this on in CI so unsupported commands fail your tests before they reach production.
+</Tip>
+
+## Request logging
+
+Print every request — method, path, status, and duration — to stdout:
+
+```bash
+upstash-redis-local --log-requests
+```
+
+```
+INFO  request  {"method":"GET","path":"/GET/user:1","status":200,"took":"0.41ms"}
+```
+
+## Record & replay
+
+Capture every command your app issues, then replay the whole session later to reproduce bugs or seed a fresh instance.
+
+### Record
+
+```bash
+upstash-redis-local --record session.jsonl
+```
+
+Each executed command is appended as one JSON line:
+
+```json
+["SET","user:1","alice"]
+["GET","user:1"]
+["INCR","counter"]
+```
+
+### Replay
+
+Use the CLI to replay against any running server:
+
+```bash
+upstash-local replay --input session.jsonl --url http://localhost:8000 --token local-dev-token
+```
+
+```
+✅ Replayed 3 commands (3 ok, 0 failed) from session.jsonl
+```
+
+<Note>
+Replay is great for deterministic CI fixtures: record once against a real session, commit the `.jsonl`, and replay it to set up test data.
+</Note>

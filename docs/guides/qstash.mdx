@@ -1,0 +1,117 @@
+---
+title: "QStash Emulator"
+description: "Run a local HTTP message queue with delays, retries, and a dead-letter queue."
+---
+
+The QStash emulator gives you a local version of [Upstash QStash](https://upstash.com/docs/qstash) — an HTTP message queue. You publish a message addressed to a URL; the server delivers it via `POST` with optional delay and automatic retries, and parks failures in a dead-letter queue (DLQ).
+
+This is the right tool for **background jobs, webhooks, and email/notification queues** during local development — patterns where a plain Redis list is a poor fit.
+
+<Note>
+The emulator is **opt-in**. Start the server with `--enable-qstash` (or `UPSTASH_ENABLE_QSTASH=true`).
+</Note>
+
+## Enable it
+
+```bash
+upstash-redis-local --enable-qstash
+```
+
+You'll see:
+
+```
+INFO  QStash emulator enabled (POST /v2/publish/<url>, GET /v2/messages, GET /v2/dlq)
+```
+
+## Publish a message
+
+`POST /v2/publish/<destination-url>` — the destination is the absolute URL the message will be delivered to. URL-encode it in the path, or pass it as `?url=`.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "http://localhost:8000/v2/publish/https%3A%2F%2Fexample.com%2Fwebhook" \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"welcome@app.com"}'
+```
+
+```ts @upstash/qstash style
+// Point the QStash client baseUrl at your local server
+import { Client } from "@upstash/qstash";
+
+const client = new Client({
+  baseUrl: "http://localhost:8000",
+  token: "local-dev-token",
+});
+
+await client.publishJSON({
+  url: "https://example.com/webhook",
+  body: { email: "welcome@app.com" },
+});
+```
+
+</CodeGroup>
+
+Response:
+
+```json
+{ "messageId": "msg_3f9a1c5e8b7d4a2f1029384756abcdef" }
+```
+
+## Headers
+
+| Header | Description | Default |
+| --- | --- | --- |
+| `Upstash-Delay` | Delay before delivery. Accepts `10s`, `2m`, or bare seconds. | none |
+| `Upstash-Retries` | Max retry attempts before the message is dead-lettered. | `3` |
+| `Upstash-Forward-*` | Forwarded to the destination with the prefix stripped (e.g. `Upstash-Forward-X-Api-Key` → `X-Api-Key`). | — |
+
+### Delayed delivery
+
+```bash
+curl -X POST "http://localhost:8000/v2/publish/?url=https://example.com/webhook" \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Upstash-Delay: 30s" \
+  -d '{"reminder":"meeting"}'
+```
+
+## Inspect messages
+
+```bash
+# All queued / delivered / retrying messages
+curl http://localhost:8000/v2/messages -H "Authorization: Bearer local-dev-token"
+
+# Dead-letter queue (messages that exhausted their retries)
+curl http://localhost:8000/v2/dlq -H "Authorization: Bearer local-dev-token"
+```
+
+Each message reports its lifecycle `state`:
+
+| State | Meaning |
+| --- | --- |
+| `queued` | Waiting for its delivery time |
+| `retrying` | A delivery attempt failed; scheduled to retry |
+| `delivered` | Destination returned `2xx` |
+| `failed` | Exhausted retries; moved to the DLQ |
+
+## How delivery works
+
+<Steps>
+  <Step title="Queue">
+    The message is stored in Redis and added to a sorted set keyed by delivery time.
+  </Step>
+  <Step title="Poll">
+    A background worker scans for due messages once per second and claims each one so it is delivered exactly once.
+  </Step>
+  <Step title="Deliver">
+    The worker `POST`s the body to the destination. A `2xx` marks it delivered.
+  </Step>
+  <Step title="Retry / DLQ">
+    On failure it retries with exponential backoff (capped at 60s). After `Upstash-Retries` attempts it moves to the DLQ.
+  </Step>
+</Steps>
+
+<Warning>
+This is a development tool. It is not a durable, distributed queue — use real Upstash QStash in production.
+</Warning>

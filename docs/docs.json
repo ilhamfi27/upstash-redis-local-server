@@ -57,7 +57,9 @@
               "guides/rate-limits",
               "guides/cli",
               "guides/docker-profiles",
-              "guides/security"
+              "guides/security",
+              "guides/qstash",
+              "guides/testing-tools"
             ]
           },
           {

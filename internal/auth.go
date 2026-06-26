@@ -22,8 +22,8 @@ type authResult struct {
 }
 
 var readOnlyBlocked = map[string]bool{
-	"KEYS": true, "SCAN": true, "FLUSHALL": true, "FLUSHDB": true,
-	"RANDOMKEY": true, "DEBUG": true, "CONFIG": true, "SHUTDOWN": true,
+	"KEYS": true, "FLUSHALL": true, "FLUSHDB": true,
+	"DEBUG": true, "CONFIG": true, "SHUTDOWN": true,
 }
 
 var writeCommands = map[string]bool{

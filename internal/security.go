@@ -15,6 +15,19 @@ type SecurityConfig struct {
 	CORSOrigin             string
 	RequireDashboardAuth   bool
 	BlockDangerousCommands bool
+	StrictUpstash          bool
+}
+
+// strictBlocked are commands Upstash Cloud rejects over its REST API. Blocking
+// them locally catches "works on my machine, breaks in prod" bugs early.
+var strictBlocked = map[string]bool{
+	"SUBSCRIBE": true, "UNSUBSCRIBE": true, "PSUBSCRIBE": true, "PUNSUBSCRIBE": true,
+	"BLPOP": true, "BRPOP": true, "BLMOVE": true, "BLMPOP": true, "BRPOPLPUSH": true,
+	"BZPOPMIN": true, "BZPOPMAX": true, "BZMPOP": true, "WAIT": true,
+	"MONITOR": true, "SYNC": true, "PSYNC": true, "SLAVEOF": true, "REPLICAOF": true,
+	"SELECT": true, "SWAPDB": true, "MOVE": true, "DEBUG": true, "SHUTDOWN": true,
+	"FAILOVER": true, "CLIENT": true, "RESET": true, "MULTI": true, "EXEC": true,
+	"DISCARD": true, "WATCH": true, "UNWATCH": true, "SUBSCRIBE_SHARD": true,
 }
 
 var weakTokens = map[string]bool{
@@ -59,12 +72,12 @@ func isWeakToken(token string) bool {
 }
 
 func (s *Server) isDangerousCommandBlocked(commandName string) error {
-	if !s.Security.BlockDangerousCommands {
-		return nil
-	}
 	cmd := strings.ToUpper(commandName)
-	if dangerousCommands[cmd] {
+	if s.Security.BlockDangerousCommands && dangerousCommands[cmd] {
 		return fmt.Errorf("ERR command '%s' is blocked by local security policy", cmd)
+	}
+	if s.Security.StrictUpstash && strictBlocked[cmd] {
+		return fmt.Errorf("ERR command '%s' is not supported by Upstash REST (strict mode)", cmd)
 	}
 	return nil
 }
@@ -93,6 +106,9 @@ func LogSecurityWarnings(logger *zap.Logger, addr, apiToken, readOnlyToken strin
 	}
 	if sec.RequireDashboardAuth {
 		logger.Info("dashboard API requires authentication")
+	}
+	if sec.StrictUpstash {
+		logger.Info("strict Upstash parity mode — rejecting commands unsupported by Upstash REST")
 	}
 	if sec.CORSOrigin != "" && sec.CORSOrigin != "*" {
 		logger.Info("CORS restricted", zap.String("origin", sec.CORSOrigin))
