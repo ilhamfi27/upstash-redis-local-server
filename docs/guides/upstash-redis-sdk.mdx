@@ -1,0 +1,167 @@
+---
+title: "Connect the @upstash/redis SDK to Your Local Server"
+sidebarTitle: "SDK Integration"
+description: "Connect the @upstash/redis SDK to your local server using environment variables and switch between local and cloud profiles without changing any code."
+---
+
+The `@upstash/redis` SDK works out of the box with Upstash Redis Local — no special mode, no extra packages, and no code changes between your local development environment and the cloud. You point the SDK at your local server through environment variables, and the rest of your application code stays identical.
+
+## Install the SDK
+
+Install `@upstash/redis` from npm if you haven't already:
+
+```bash
+npm install @upstash/redis
+```
+
+## Configure the SDK for Local Development
+
+Pass your local server's URL and a placeholder token directly to the `Redis` constructor. Because Upstash Redis Local does not enforce token authentication by default, any non-empty string works as the token.
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const redis = new Redis({
+  url: 'http://localhost:8000',
+  token: 'local-dev-token',
+})
+
+await redis.set('foo', 'bar')
+const value = await redis.get('foo') // 'bar'
+```
+
+<Note>
+  Upstash Redis Local accepts any token value when running in development mode. Use a real token only when you enable authentication explicitly.
+</Note>
+
+## Switch Between Local and Cloud with Environment Variables
+
+Rather than hardcoding connection details, use `Redis.fromEnv()`. This method reads `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from the environment automatically, so your application code never needs to change when you move between local and cloud.
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const redis = Redis.fromEnv()
+// Reads UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN automatically
+
+await redis.set('session:user:42', JSON.stringify({ name: 'Alice' }))
+const session = await redis.get('session:user:42')
+```
+
+### Environment File Setup
+
+Create two environment files in your project root — one for local development and one for the cloud.
+
+<CodeGroup>
+
+```bash .env.local
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+UPSTASH_REDIS_REST_READONLY_TOKEN=local-readonly-token
+```
+
+```bash .env.cloud
+UPSTASH_REDIS_REST_URL=https://your-instance.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-cloud-token
+UPSTASH_REDIS_REST_READONLY_TOKEN=your-cloud-readonly-token
+```
+
+</CodeGroup>
+
+Load `.env.local` for local development and `.env.cloud` when deploying to staging or production. Most Node.js frameworks (Next.js, Remix, Vite) pick up `.env.local` automatically in development mode.
+
+## Switch Profiles with the CLI
+
+The `upstash-local` CLI can write the correct environment file for you so you never manually edit connection details:
+
+```bash
+upstash-local use dev    # writes .env.local pointing at http://localhost:8000
+upstash-local use cloud  # activates .env.cloud (the file must already exist)
+```
+
+<Tip>
+  Run `upstash-local use dev` at the start of a local session and `upstash-local use cloud` before deploying. Your code reads the same `Redis.fromEnv()` call either way.
+</Tip>
+
+## SDK Feature Examples
+
+All `@upstash/redis` features work against the local server exactly as they do in the cloud.
+
+<Tabs>
+
+<Tab title="Basic commands">
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const redis = Redis.fromEnv()
+
+// String
+await redis.set('counter', 0)
+await redis.incr('counter')
+const count = await redis.get('counter') // 1
+
+// Hash
+await redis.hset('user:1', { name: 'Alice', role: 'admin' })
+const user = await redis.hgetall('user:1') // { name: 'Alice', role: 'admin' }
+
+// Expiry
+await redis.set('session', 'abc123', { ex: 3600 }) // expires in 1 hour
+const ttl = await redis.ttl('session') // seconds remaining
+```
+
+</Tab>
+
+<Tab title="Pipeline">
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const redis = Redis.fromEnv()
+
+// Pipeline batches multiple commands into a single HTTP request
+const pipeline = redis.pipeline()
+pipeline.set('key1', 'value1')
+pipeline.set('key2', 'value2')
+pipeline.get('key1')
+pipeline.get('key2')
+
+const results = await pipeline.exec()
+// results: ['OK', 'OK', 'value1', 'value2']
+```
+
+</Tab>
+
+<Tab title="Pub/Sub">
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const publisher = Redis.fromEnv()
+const subscriber = Redis.fromEnv()
+
+// Subscribe to a channel
+await subscriber.subscribe('notifications', (message) => {
+  console.log('Received:', message)
+})
+
+// Publish a message
+await publisher.publish('notifications', JSON.stringify({ event: 'user.signup', id: 42 }))
+```
+
+</Tab>
+
+</Tabs>
+
+## No Code Changes Between Local and Cloud
+
+Because `Redis.fromEnv()` reads from the environment, the same application code runs locally and in the cloud. The only thing that changes is which environment file is active.
+
+<CardGroup cols={2}>
+  <Card title="Local development" icon="laptop">
+    `UPSTASH_REDIS_REST_URL=http://localhost:8000` — unlimited requests, instant setup, no cloud account needed.
+  </Card>
+  <Card title="Cloud production" icon="cloud">
+    `UPSTASH_REDIS_REST_URL=https://your-instance.upstash.io` — the same SDK, the same API, real persistence.
+  </Card>
+</CardGroup>

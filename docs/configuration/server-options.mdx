@@ -1,0 +1,152 @@
+---
+title: "Upstash Redis Local — Server Configuration Options"
+sidebarTitle: "Server Options"
+description: "Full reference for every CLI flag that controls how Upstash Redis Local binds, authenticates, connects to Redis, and simulates cloud quota limits."
+---
+
+Upstash Redis Local accepts configuration through CLI flags passed at startup. Every flag also has an equivalent environment variable — see the [Environment Variables](/configuration/environment-variables) page for details. Flags passed on the command line always take precedence over environment variables.
+
+## Connection
+
+These flags control the network addresses the server listens on and how it connects to your underlying Redis instance.
+
+<ParamField path="--addr" type="string" default=":8000">
+  The address and port the Upstash REST API server listens on. Use the format
+  `host:port` to bind to a specific interface, or `:port` to bind on all
+  interfaces. Maps to `UPSTASH_ADDR`.
+</ParamField>
+
+<ParamField path="--redis" type="string" default=":6379">
+  The address of the Redis server that Upstash Redis Local proxies to. Accepts
+  any `host:port` string — useful when Redis is running in a Docker network or
+  on a non-standard port. Maps to `REDIS_ADDR`.
+</ParamField>
+
+<ParamField path="--max-retries" type="integer" default="10">
+  Maximum number of times the server retries connecting to Redis on startup
+  before exiting with an error. Increase this when Redis takes a few seconds to
+  start (for example, in a Docker Compose setup). Maps to
+  `UPSTASH_MAX_RETRIES`.
+</ParamField>
+
+<ParamField path="--retry-delay" type="integer" default="1000">
+  Milliseconds to wait between each connection retry attempt. Combine with
+  `--max-retries` to tune the total startup wait. Maps to
+  `UPSTASH_RETRY_DELAY`.
+</ParamField>
+
+## Authentication
+
+These flags set the tokens clients must supply to authenticate against the REST API.
+
+<ParamField path="--token" type="string" default="upstash">
+  The read-write API token. Clients send this as a `Bearer` header or `Basic`
+  password. The default value `upstash` is intentionally weak — set a strong
+  token in any environment beyond solo local development. Maps to
+  `UPSTASH_TOKEN`.
+</ParamField>
+
+<ParamField path="--readonly-token" type="string" default="">
+  An optional second token that grants read-only access. When set, clients
+  authenticating with this token can only execute read commands; all write
+  commands and dangerous commands (such as `FLUSHALL`) are rejected. Leave
+  empty to disable the read-only role entirely. Maps to
+  `UPSTASH_READONLY_TOKEN`.
+</ParamField>
+
+## Security
+
+These flags harden the server against unintended access. You can enable them individually or all at once with `--secure`. See the [Security](/configuration/security) page for guidance on which options suit your environment.
+
+<ParamField path="--localhost-only" type="boolean" default="false">
+  Binds the server to `127.0.0.1` instead of `0.0.0.0`, so only processes on
+  the same machine can reach the API. Blocks all external network access.
+  Maps to `UPSTASH_LOCALHOST_ONLY`.
+</ParamField>
+
+<ParamField path="--disable-query-token" type="boolean" default="false">
+  Disallows the `?_token=` query-string authentication method. With this flag
+  set, clients must use the `Authorization: Bearer` or `Authorization: Basic`
+  header. This prevents tokens from appearing in server access logs or browser
+  history. Maps to `UPSTASH_DISABLE_QUERY_TOKEN`.
+</ParamField>
+
+<ParamField path="--cors-origin" type="string" default="*">
+  Restricts the `Access-Control-Allow-Origin` header to a single allowed
+  origin, for example `http://localhost:3000`. Defaults to `*`, which allows
+  all origins. Maps to `UPSTASH_CORS_ORIGIN`.
+</ParamField>
+
+<ParamField path="--require-dashboard-auth" type="boolean" default="true">
+  Requires a valid `Bearer` token to access the built-in key browser
+  dashboard. Enabled by default. Disable only if you need unauthenticated
+  dashboard access on a trusted private machine. Maps to
+  `UPSTASH_REQUIRE_DASHBOARD_AUTH`.
+</ParamField>
+
+<ParamField path="--block-dangerous-commands" type="boolean" default="false">
+  Blocks a set of commands that can destroy data or reconfigure Redis:
+  `FLUSHALL`, `FLUSHDB`, `CONFIG`, `SHUTDOWN`, `DEBUG`, `SLAVEOF`,
+  `REPLICAOF`, and `MIGRATE`. Recommended in any environment with more than one
+  developer. Maps to `UPSTASH_BLOCK_DANGEROUS_COMMANDS`.
+</ParamField>
+
+<ParamField path="--secure" type="boolean" default="false">
+  Convenience flag that enables four security options in a single switch:
+  `--localhost-only`, `--disable-query-token`, `--require-dashboard-auth`, and
+  `--block-dangerous-commands`. Note that `--cors-origin` is not set
+  automatically — supply it separately if you need to restrict browser origins.
+  Maps to `UPSTASH_SECURE`.
+</ParamField>
+
+## Simulation
+
+These flags let you replicate the quota and rate-limit behaviour of the Upstash cloud service so your application handles throttling errors before you deploy.
+
+<ParamField path="--simulate-quota" type="integer" default="0">
+  Simulates a daily request quota. Once the server has handled this many
+  requests since midnight, it returns `429 Too Many Requests` for every
+  subsequent request until the quota resets. Set to `0` to disable. Maps to
+  `SIMULATE_QUOTA`.
+</ParamField>
+
+<ParamField path="--simulate-rps" type="integer" default="0">
+  Simulates a per-second rate limit. When the server receives more than this
+  many requests in a one-second window it returns `429 Too Many Requests` for
+  the excess requests. Set to `0` to disable. Maps to `SIMULATE_RPS`.
+</ParamField>
+
+## Utility flags
+
+<ParamField path="--version" type="boolean">
+  Prints the current version string and exits immediately.
+</ParamField>
+
+<ParamField path="--help" type="boolean">
+  Prints a usage summary of all flags and exits immediately.
+</ParamField>
+
+---
+
+## Example: full startup command
+
+The example below starts the server with a custom token, points it at a Redis instance on a non-default port, enables dangerous-command blocking, and simulates an RPS cap of 100.
+
+```bash
+upstash-local \
+  --addr :8080 \
+  --redis :6380 \
+  --token my-strong-token-here \
+  --readonly-token my-readonly-token \
+  --block-dangerous-commands \
+  --simulate-rps 100 \
+  --max-retries 15 \
+  --retry-delay 500
+```
+
+<Tip>
+  Prefer environment variables over long flag lists — they are easier to manage
+  in Docker Compose files and CI pipelines. Every flag above maps 1-to-1 to an
+  environment variable. See the [Environment Variables](/configuration/environment-variables)
+  reference for the full mapping.
+</Tip>

@@ -1,77 +1,62 @@
 ---
-title: Quickstart
-description: Deploy Upstash Redis Local in minutes and make your first request.
+title: "Quick Start: Running Upstash Redis Local in Minutes"
+sidebarTitle: "Quick Start"
+description: "Clone the repo, run one script, and have a fully functional local Upstash Redis REST API server running on your machine in under two minutes."
 ---
 
-Get a fully working local Upstash-compatible Redis server in under two minutes.
+The fastest way to get Upstash Redis Local running is the `start.sh` script bundled in the repository. It detects your Docker environment, picks the right Compose profile, and starts both Redis and the local server for you — no manual configuration required.
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- Git Bash (Windows), or any Unix shell
+You need [Docker](https://docs.docker.com/get-docker/) installed and the Docker daemon running before you begin. The quick-start script handles everything else.
 
-## Step 1 — Clone and start
+<Steps>
+
+### Clone the repository
 
 ```bash
 git clone https://github.com/aine1100/Upstash-Redis-Local-server.git
-cd upstash-redis-local
+cd Upstash-Redis-Local-server
+```
+
+### Start the server
+
+Run the quick-start script. It inspects your Docker setup, selects the appropriate Compose profile, and brings up both the Redis container and the Upstash Redis Local server.
+
+```bash
 chmod +x start.sh
 ./start.sh
 ```
 
+The script prints the selected profile and the URLs the server is listening on once everything is healthy. Both services start in detached mode, so your terminal is free immediately after.
+
 <Tip>
-  If port **6379** is already in use, `start.sh` automatically switches to the **external** profile and connects to your existing Redis.
+  If you prefer to watch the startup logs in real time, run `docker-compose logs -f upstash-local` after the script exits.
 </Tip>
 
-## Step 2 — Verify health
+### Verify the server is running
 
-Open in your browser:
-
-```
-http://localhost:8000/health
-```
-
-Expected response:
-
-```json
-{"status":"healthy","redis":"connected"}
-```
-
-## Step 3 — Your first command
-
-**Browser** (easiest):
-
-```
-http://localhost:8000/PING?_token=local-dev-token
-```
-
-**curl** (Git Bash):
+Send a `PING` command through the REST API to confirm the server is accepting requests.
 
 ```bash
-curl -H "Authorization: Bearer local-dev-token" http://localhost:8000/PING
+curl "http://localhost:8000/PING?_token=local-dev-token"
 ```
 
-Expected:
+You should receive:
 
 ```json
 {"result":"PONG"}
 ```
 
-## Step 4 — Set and get a value
+If you see that response, the server is up and correctly connected to Redis.
 
-```bash
-curl -H "Authorization: Bearer local-dev-token" \
-  http://localhost:8000/SET/mykey/hello
+### Open the dashboard
 
-curl -H "Authorization: Bearer local-dev-token" \
-  http://localhost:8000/GET/mykey
-```
+Navigate to [http://localhost:8000/dashboard](http://localhost:8000/dashboard) in your browser. The built-in dashboard lets you browse keys, inspect values, and run ad-hoc commands against your local Redis instance — no extra tooling needed.
 
-## Step 5 — Open the dashboard
+### Connect your application
 
-Visit [http://localhost:8000/dashboard](http://localhost:8000/dashboard) to see request counts and browse keys.
-
-## Use with @upstash/redis
+Use the `@upstash/redis` SDK to connect to the local server. The only change from your production configuration is the URL and token.
 
 ```typescript
 import { Redis } from '@upstash/redis'
@@ -82,33 +67,58 @@ const redis = new Redis({
 })
 
 await redis.set('foo', 'bar')
-console.log(await redis.get('foo')) // 'bar'
+const value = await redis.get('foo') // 'bar'
+console.log(value)
 ```
 
-See the full [SDK integration guide](/guides/sdk-integration).
+Install the SDK if you haven't already:
+
+```bash
+npm install @upstash/redis
+```
+
+</Steps>
+
+## Available endpoints
+
+Once the server is running, the following URLs are available on `http://localhost:8000`:
+
+| Path | Description |
+|---|---|
+| `/<COMMAND>` | Execute any Redis command via REST |
+| `/pipeline` | Send a batch of commands in a single request |
+| `/multi-exec` | Execute commands inside a Redis transaction |
+| `/publish` | Publish a message to a pub/sub channel |
+| `/subscribe` | Subscribe to a pub/sub channel |
+| `/monitor` | Stream all commands passing through Redis |
+| `/dashboard` | Web-based key browser and command runner |
+| `/health` | Health-check endpoint — returns `200 OK` when ready |
 
 ## Default credentials
 
-| Setting | Value |
-| --- | --- |
-| REST URL | `http://localhost:8000` |
-| Full-access token | `local-dev-token` |
+| Token type | Value |
+|---|---|
+| Read-write token | `local-dev-token` |
 | Read-only token | `local-readonly-token` |
-| Redis | `localhost:6379` |
 
-## Next steps
+<Warning>
+  These tokens are hardcoded defaults meant for local development only. Never use them in a production environment or commit them to a public repository.
+</Warning>
 
-<CardGroup cols={2}>
-  <Card title="Switch from Cloud" icon="repeat" href="/guides/switch-from-cloud">
-    Stop burning cloud quota during dev.
-  </Card>
-  <Card title="CLI Tools" icon="terminal" href="/guides/cli">
-    Seed data, export keys, switch env profiles.
-  </Card>
-  <Card title="API Reference" icon="book" href="/api-reference/introduction">
-    Every endpoint documented.
-  </Card>
-  <Card title="Testing Guide" icon="vial" href="/testing/manual">
-    Verify all features step by step.
-  </Card>
-</CardGroup>
+## Switching back to the Upstash cloud
+
+When you're ready to deploy, point your application back at the real Upstash service by updating your environment variables. No code changes are required.
+
+```bash
+# Local development
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+
+# Production (Upstash cloud)
+UPSTASH_REDIS_REST_URL=https://<your-endpoint>.upstash.io
+UPSTASH_REDIS_REST_TOKEN=<your-upstash-token>
+```
+
+<Info>
+  The `@upstash/redis` SDK reads `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` automatically when you use `Redis.fromEnv()`, making environment-based switching seamless.
+</Info>

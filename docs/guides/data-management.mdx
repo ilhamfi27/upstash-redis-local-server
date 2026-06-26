@@ -1,0 +1,165 @@
+---
+title: "Seed, Export, and Import Data Using the upstash-local CLI"
+sidebarTitle: "Data Management"
+description: "Use the upstash-local CLI to populate your server with test data, export snapshots to JSON, and import data between local and staging environments."
+---
+
+The `upstash-local` CLI gives you a set of data management commands that make it easy to work with realistic datasets during development. You can seed a fresh server with hundreds of random keys in one command, snapshot the state to a JSON file, and replay that snapshot on any other instance — whether that's a teammate's laptop or a staging environment.
+
+## Build the CLI
+
+Before running any CLI commands, compile the binary from source:
+
+```bash
+make build-cli
+```
+
+This produces the executable at `./bin/upstash-local`. Add `./bin` to your `PATH` or reference the binary directly.
+
+## Commands
+
+### `seed` — Populate the Server with Test Data
+
+The `seed` command writes N random keys to the server so you have realistic data to work with right away. All keys receive the prefix you specify, making it easy to identify and clean up seeded data later.
+
+```bash
+upstash-local seed \
+  --keys 100 \
+  --prefix dev: \
+  --url http://localhost:8000 \
+  --token local-dev-token
+```
+
+| Flag | Description |
+|---|---|
+| `--keys` | Number of keys to create |
+| `--prefix` | String prepended to every key name |
+| `--url` | URL of the target server |
+| `--token` | Authentication token |
+
+<Tip>
+  Use a consistent prefix like `dev:` or `test:` so you can filter seeded keys out of exports or delete them in bulk later.
+</Tip>
+
+---
+
+### `export` — Snapshot Keys to a JSON File
+
+The `export` command reads all keys matching a glob pattern from the server and writes them to a JSON file. Each entry includes the key name, data type, value, and TTL.
+
+```bash
+upstash-local export \
+  --output dump.json \
+  --pattern '*' \
+  --url http://localhost:8000 \
+  --token local-dev-token
+```
+
+| Flag | Description |
+|---|---|
+| `--output` | Path to the output JSON file |
+| `--pattern` | Glob pattern for key matching (e.g. `'dev:*'`) |
+| `--url` | URL of the source server |
+| `--token` | Authentication token |
+
+The output file contains a JSON array where each object describes one key:
+
+```json
+[
+  { "key": "dev:user:1", "type": "string", "value": "alice", "ttl": -1 },
+  { "key": "dev:counter", "type": "string", "value": "42", "ttl": 3600 }
+]
+```
+
+A TTL of `-1` means the key never expires. Positive values are the remaining time to live in seconds at the moment of export.
+
+---
+
+### `import` — Restore Keys from a JSON File
+
+The `import` command reads a dump file produced by `export` and writes every key into the target server. Use it to restore a snapshot, copy data to a second instance, or provision a staging environment with known state.
+
+```bash
+upstash-local import \
+  --input dump.json \
+  --url http://localhost:8000 \
+  --token local-dev-token
+```
+
+| Flag | Description |
+|---|---|
+| `--input` | Path to the JSON dump file |
+| `--url` | URL of the destination server |
+| `--token` | Authentication token |
+
+<Warning>
+  Importing does not flush existing data first. If the destination server already contains a key with the same name, the imported value overwrites it.
+</Warning>
+
+---
+
+### `ping` — Check Server Connectivity
+
+Run a quick health check against any server URL:
+
+```bash
+upstash-local ping http://localhost:8000
+```
+
+The command exits with code `0` on success and prints a confirmation message. Use this in scripts or CI steps to wait for the server to become ready before running tests.
+
+---
+
+### `generate-token` — Create a Secure Random Token
+
+Generate a cryptographically random token string suitable for use as an authentication token:
+
+```bash
+upstash-local generate-token
+```
+
+Copy the output into your `.env.local` or `.env.cloud` file as the value for `UPSTASH_REDIS_REST_TOKEN`.
+
+---
+
+## End-to-End Workflow
+
+The commands above compose naturally into a development workflow that spans local, team, and staging environments.
+
+<Steps>
+
+<Step title="Seed your local server">
+  Populate a fresh server with test data so you have something to work with immediately:
+
+  ```bash
+  upstash-local seed --keys 100 --prefix dev: --url http://localhost:8000 --token local-dev-token
+  ```
+</Step>
+
+<Step title="Develop and iterate">
+  Build your feature. Use the dashboard at `http://localhost:8000/dashboard` to inspect keys and watch request counts as your code runs.
+</Step>
+
+<Step title="Export a snapshot">
+  When your local data is in a known-good state, capture it:
+
+  ```bash
+  upstash-local export --output dev-snapshot.json --pattern 'dev:*' --url http://localhost:8000 --token local-dev-token
+  ```
+
+  Commit `dev-snapshot.json` to version control so teammates can reproduce the same environment.
+</Step>
+
+<Step title="Import to staging">
+  Push the snapshot to your staging server to give it the same baseline data:
+
+  ```bash
+  upstash-local import --input dev-snapshot.json --url https://staging.example.com --token your-staging-token
+  ```
+</Step>
+
+</Steps>
+
+<Note>
+  The dump format (`key`, `type`, `value`, `ttl`) is stable — files exported from one version of Upstash Redis Local can be imported into any other version.
+</Note>

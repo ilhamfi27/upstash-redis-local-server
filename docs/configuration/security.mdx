@@ -1,0 +1,249 @@
+---
+title: "Upstash Redis Local — Security Hardening Options"
+sidebarTitle: "Security"
+description: "Learn how to protect Upstash Redis Local on shared networks and in CI with token hardening, access restrictions, and dangerous-command blocking."
+---
+
+Running a local server on your laptop feels safe, but the moment you join a shared Wi-Fi network, work inside a CI runner that shares infrastructure, or spin up a team development server, the defaults that make solo development convenient become liabilities. Upstash Redis Local ships with several security options that let you tighten access without changing your application code.
+
+<Note>
+  The security options on this page are designed for **shared networks, team
+  servers, and CI environments**. For solo local development on a private
+  machine they add friction without meaningful benefit — you can skip them
+  entirely until you need them.
+</Note>
+
+---
+
+## Enable everything at once with `--secure`
+
+The fastest way to harden the server is the `--secure` flag (or `UPSTASH_SECURE=true`). It activates four security options in a single switch:
+
+```bash
+# CLI
+upstash-local --secure --token my-strong-token
+
+# .env
+UPSTASH_SECURE=true
+UPSTASH_TOKEN=my-strong-token
+```
+
+<Warning>
+  `--secure` does **not** automatically generate a strong token for you. You
+  must still set `--token` (or `UPSTASH_TOKEN`) to a value that is not one of
+  the weak defaults. See [Generating a strong token](#generating-a-strong-token)
+  below.
+</Warning>
+
+---
+
+## Individual security options
+
+### Prevent external network access
+
+```bash
+--localhost-only       # CLI flag
+UPSTASH_LOCALHOST_ONLY=true   # env var
+```
+
+By default the server binds to `0.0.0.0` and accepts connections from any network interface — including your Wi-Fi adapter. Setting `--localhost-only` rebinds the server to `127.0.0.1` so that only processes running on the same machine can reach the API. Nothing outside your laptop can connect, regardless of firewall rules.
+
+**Use this when:** you are on a shared Wi-Fi network, a dorm network, a conference network, or anywhere you do not control who else is connected.
+
+---
+
+### Keep tokens out of logs and browser history
+
+```bash
+--disable-query-token            # CLI flag
+UPSTASH_DISABLE_QUERY_TOKEN=true  # env var
+```
+
+The Upstash REST API supports passing a token as a query-string parameter (`?_token=...`) for convenience. However, URLs — including query strings — appear in server access logs, browser history, and HTTP referrer headers. Setting `--disable-query-token` rejects this authentication method and requires clients to use the `Authorization: Bearer` or `Authorization: Basic` header instead.
+
+**Use this when:** you are logging HTTP traffic, using a reverse proxy that writes access logs, or sharing a browser with other users on a shared machine.
+
+---
+
+### Block destructive Redis commands
+
+```bash
+--block-dangerous-commands               # CLI flag
+UPSTASH_BLOCK_DANGEROUS_COMMANDS=true    # env var
+```
+
+With this option enabled the server rejects the following commands with a `403` error before they reach Redis:
+
+| Command | Risk |
+|---|---|
+| `FLUSHALL` | Deletes every key in every database |
+| `FLUSHDB` | Deletes every key in the current database |
+| `CONFIG` | Can rewrite the Redis configuration file |
+| `SHUTDOWN` | Stops the Redis process |
+| `DEBUG` | Low-level diagnostics; potential security surface |
+| `SLAVEOF` | Changes Redis replication settings |
+| `REPLICAOF` | Same as `SLAVEOF` (newer alias) |
+| `MIGRATE` | Moves keys to a remote server |
+
+**Use this when:** more than one developer shares the same Redis instance, or when you want to prevent a bug or a test teardown script from accidentally wiping data.
+
+<Tip>
+  The read-only token also blocks write commands and most of the above
+  automatically. Consider issuing a read-only token to team members who only
+  need to inspect data.
+</Tip>
+
+---
+
+### Protect the key browser dashboard
+
+```bash
+--require-dashboard-auth               # CLI flag
+UPSTASH_REQUIRE_DASHBOARD_AUTH=true    # env var
+```
+
+The built-in dashboard lets anyone who can reach the server browse and inspect your Redis keys through a web browser. Dashboard authentication is enabled by default (`--require-dashboard-auth` defaults to `true`), so the dashboard requires a valid `Bearer` token out of the box. If you have disabled it and want to re-enable it, set `--require-dashboard-auth` (or `UPSTASH_REQUIRE_DASHBOARD_AUTH=true`).
+
+**Use this when:** you are running the server on a shared network and want to allow API access from your application while keeping the visual key browser private.
+
+---
+
+### Restrict browser origins
+
+```bash
+--cors-origin http://localhost:3000     # CLI flag
+UPSTASH_CORS_ORIGIN=http://localhost:3000  # env var
+```
+
+By default the server responds with `Access-Control-Allow-Origin: *`, which allows any web page to make cross-origin requests to the API. Setting `--cors-origin` to a specific origin locks responses to that origin only.
+
+**Use this when:** you are running a web application locally and want to prevent other browser tabs or extensions from making requests to the local server.
+
+---
+
+## Generating a strong token
+
+The default token (`upstash`) is intentionally short and memorable for quick local setup — do not use it in any environment beyond solo development on a private machine.
+
+Generate a cryptographically random token with standard shell tools:
+
+```bash
+# macOS / Linux — 32 random bytes, base64-encoded
+openssl rand -base64 32
+
+# Node.js
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+Set the result as your token:
+
+```bash
+upstash-local --token "$(openssl rand -base64 32)"
+```
+
+---
+
+## Weak token detection
+
+The server checks your token against a list of known-weak values at startup and prints a warning to stderr if it detects one:
+
+- `upstash` (the default)
+- `local-dev-token`
+- `local-readonly-token`
+- `test-token`
+- `test`
+- `dev`
+- `password`
+
+The server still starts — the warning is informational — but you should replace the token before using the server on a network you do not fully control.
+
+```
+WARNING: You are using a weak or default token. Set a strong token with
+--token or UPSTASH_TOKEN before exposing this server on a shared network.
+```
+
+---
+
+## Recommended configurations
+
+### Shared Wi-Fi / shared office network
+
+Enable all security options, use a strong token, and restrict the server to localhost:
+
+```dotenv .env
+UPSTASH_TOKEN=<output of openssl rand -base64 32>
+UPSTASH_READONLY_TOKEN=<second token for read-only clients>
+UPSTASH_SECURE=true
+UPSTASH_CORS_ORIGIN=http://localhost:3000
+```
+
+```bash
+# Equivalent CLI invocation
+upstash-local \
+  --token "$UPSTASH_TOKEN" \
+  --readonly-token "$UPSTASH_READONLY_TOKEN" \
+  --secure \
+  --cors-origin http://localhost:3000
+```
+
+### CI environment (GitHub Actions, GitLab CI, etc.)
+
+Store the token as a CI secret and pass it through the environment. Block dangerous commands to prevent test cleanup scripts from accidentally calling `FLUSHALL` on a shared instance:
+
+```yaml .github/workflows/test.yml (excerpt)
+env:
+  UPSTASH_REDIS_REST_URL: http://localhost:8000
+  UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_TOKEN }}
+  UPSTASH_TOKEN: ${{ secrets.UPSTASH_TOKEN }}
+  UPSTASH_LOCALHOST_ONLY: "true"
+  UPSTASH_BLOCK_DANGEROUS_COMMANDS: "true"
+  SIMULATE_QUOTA: "10000"
+  SIMULATE_RPS: "100"
+```
+
+### Team development server
+
+Run without `--localhost-only` so teammates on the same LAN can connect, but require dashboard authentication and block dangerous commands:
+
+```dotenv .env.team
+UPSTASH_TOKEN=<strong shared token>
+UPSTASH_READONLY_TOKEN=<strong read-only token>
+UPSTASH_REQUIRE_DASHBOARD_AUTH=true
+UPSTASH_BLOCK_DANGEROUS_COMMANDS=true
+UPSTASH_CORS_ORIGIN=http://dev.local:3000
+UPSTASH_DISABLE_QUERY_TOKEN=true
+```
+
+<Warning>
+  Never commit `.env` files containing real tokens to version control. Add
+  `.env`, `.env.*`, and any file matching `*secret*` to your `.gitignore`.
+</Warning>
+
+---
+
+## Security options quick-reference
+
+<CardGroup cols={2}>
+  <Card title="--secure" icon="shield-halved">
+    Enables four security options in one flag: localhost-only, disable-query-token,
+    require-dashboard-auth, and block-dangerous-commands. Start here for team or CI
+    environments.
+  </Card>
+  <Card title="--localhost-only" icon="house-lock">
+    Binds to 127.0.0.1. Nothing outside your machine can connect.
+  </Card>
+  <Card title="--disable-query-token" icon="eye-slash">
+    Removes tokens from URLs. Keeps credentials out of logs and browser
+    history.
+  </Card>
+  <Card title="--block-dangerous-commands" icon="ban">
+    Blocks FLUSHALL, FLUSHDB, CONFIG, SHUTDOWN, and other destructive
+    commands.
+  </Card>
+  <Card title="--require-dashboard-auth" icon="lock">
+    Adds authentication to the key browser dashboard.
+  </Card>
+  <Card title="--cors-origin" icon="globe">
+    Locks CORS to one trusted browser origin.
+  </Card>
+</CardGroup>

@@ -1,0 +1,192 @@
+---
+title: "How to Install Upstash Redis Local on Any Platform"
+sidebarTitle: "Installation"
+description: "Install Upstash Redis Local via Docker Compose, a quick-start script, plain Docker, Homebrew, or by building from source on any platform."
+---
+
+Upstash Redis Local ships in several forms so you can fit it into whatever workflow you already have. Docker Compose is the recommended path because it provisions Redis alongside the server and handles networking automatically, but every other method is fully supported for environments where Docker isn't an option.
+
+## Docker Compose (recommended)
+
+Docker Compose is the easiest way to get a complete, self-contained environment. It starts a Redis container and the Upstash Redis Local server together, connects them on a private network, and exposes only the ports you need on your host machine.
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/aine1100/Upstash-Redis-Local-server.git
+cd Upstash-Redis-Local-server
+```
+
+**2. Start both services**
+
+```bash
+docker-compose up -d
+```
+
+The first run pulls the images and builds the server. Subsequent starts are instant.
+
+**docker-compose.yml — core services**
+
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+  upstash-local:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - UPSTASH_TOKEN=local-dev-token
+      - UPSTASH_READONLY_TOKEN=local-readonly-token
+    depends_on:
+      redis:
+        condition: service_healthy
+```
+
+<Tip>
+  Both ports are bound to `127.0.0.1` so they are not accessible from other devices on your network. Remove the `127.0.0.1:` prefix if you need remote access during development.
+</Tip>
+
+**3. Stop and remove the containers**
+
+```bash
+docker-compose down
+```
+
+---
+
+## Quick-start script
+
+The repository includes a `start.sh` script that detects your Docker environment and selects the correct Compose profile for you. Use it when you want a one-command setup and don't need to customise the Compose file manually.
+
+```bash
+git clone https://github.com/aine1100/Upstash-Redis-Local-server.git
+cd Upstash-Redis-Local-server
+chmod +x start.sh
+./start.sh
+```
+
+The script:
+
+1. Checks that Docker is installed and the daemon is running.
+2. Detects whether Docker Desktop, Rancher Desktop, or plain Docker Engine is in use.
+3. Picks the matching Compose profile (important for resolving `host.docker.internal` correctly on Linux vs macOS).
+4. Runs `docker-compose up -d` with the chosen profile and waits for the health check to pass.
+
+<Note>
+  If the script exits with a permission error, make it executable first: `chmod +x start.sh`.
+</Note>
+
+---
+
+## Docker (direct)
+
+Run the pre-built image directly if you already have a Redis instance running and don't need the full Compose setup.
+
+<CodeGroup>
+
+```bash With host Redis
+# Redis is running on your host machine at port 6379
+docker run --rm -p 8000:8000 \
+  darthbenro008/upstash-redis-local:latest \
+  --redis host.docker.internal:6379
+```
+
+```bash With a linked Redis container
+# Start Redis first
+docker run -d --name my-redis redis:7-alpine
+
+# Start upstash-redis-local linked to that container
+docker run --rm -p 8000:8000 \
+  --link my-redis:redis \
+  -e REDIS_ADDR=redis:6379 \
+  -e UPSTASH_TOKEN=local-dev-token \
+  darthbenro008/upstash-redis-local:latest
+```
+
+</CodeGroup>
+
+<Note>
+  On Linux, `host.docker.internal` is not automatically resolved. Use the `--add-host host.docker.internal:host-gateway` flag or the Docker Compose setup, which handles this automatically.
+</Note>
+
+---
+
+## Homebrew (macOS and Linux)
+
+If you prefer a native binary without Docker, install via Homebrew.
+
+```bash
+brew tap aine1100/Upstash-Redis-Local-server
+brew install upstash-redis-local
+```
+
+After installation, start the server and point it at your local Redis:
+
+```bash
+upstash-redis-local --redis :6379
+```
+
+The server listens on `http://localhost:8000` by default.
+
+<Tip>
+  Run `upstash-redis-local --help` to see all available flags, including `--addr` and `--token`.
+</Tip>
+
+---
+
+## Build from source
+
+Build the server and CLI tools yourself if you want the latest unreleased changes or need to run on an architecture without a pre-built binary.
+
+**Prerequisites:** Go 1.21 or later and `make`.
+
+```bash
+git clone https://github.com/aine1100/Upstash-Redis-Local-server.git
+cd Upstash-Redis-Local-server
+
+# Build the server binary
+make build
+
+# Optionally build the CLI tools as well
+make build-cli
+```
+
+The compiled binaries land in `./bin/`. Start the server:
+
+```bash
+./bin/upstash-redis-local --redis :6379
+```
+
+<Info>
+  The CLI tools in `./bin/` provide helper commands for interacting with the REST API from the terminal — useful for scripting and debugging.
+</Info>
+
+---
+
+## Manual download
+
+If you can't use any of the methods above, grab a pre-compiled binary directly from the [GitHub releases page](https://github.com/aine1100/Upstash-Redis-Local-server/releases). Download the archive for your OS and architecture, extract it, and run the binary:
+
+```bash
+./upstash-redis-local --redis :6379
+```
+
+---
+
+## Configuration reference
+
+All configuration can be supplied as CLI flags or environment variables.
+
+| Flag | Environment variable | Default | Description |
+|---|---|---|---|
+| `--redis` | `REDIS_ADDR` | `:6379` | Redis address in `host:port` form |
+| `--addr` | `UPSTASH_ADDR` | `:8000` | Address the HTTP server listens on |
+| `--token` | `UPSTASH_TOKEN` | `upstash` (bare binary) / `local-dev-token` (Docker Compose) | Read-write bearer token |
+
+<Warning>
+  The default tokens are public and well-known. Set custom values in any environment that other users or processes can reach.
+</Warning>

@@ -1,39 +1,23 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "Upstash Redis Local",
+  "theme": "aspen",
+  "favicon": "https://media.brand.dev/7d108835-69f7-4a45-9110-a9491bb3a839.png",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "https://media.brand.dev/a5c1d954-f019-4984-a018-9311563f59d9.svg",
+    "dark": "https://media.brand.dev/a5c1d954-f019-4984-a018-9311563f59d9.svg"
   },
-  "favicon": "/favicon.svg",
   "colors": {
-    "primary": "#0EA5E9",
-    "light": "#38BDF8",
-    "dark": "#0284C7"
+    "primary": "#65eac2",
+    "light": "#647c7c",
+    "dark": "#040605"
   },
-  "theme": "mint",
-  "topbarLinks": [
-    {
-      "name": "GitHub",
-      "url": "https://github.com/aine1100/Upstash-Redis-Local-server"
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/aine1100/Upstash-Redis-Local-server"
     }
-  ],
-  "topbarCtaButton": {
-    "name": "Get Started",
-    "url": "/quickstart"
   },
-  "anchors": [
-    {
-      "name": "Upstash Cloud",
-      "icon": "cloud",
-      "url": "https://upstash.com/docs/redis/overall/getstarted"
-    },
-    {
-      "name": "GitHub",
-      "icon": "github",
-      "url": "https://github.com/aine1100/Upstash-Redis-Local-server"
-    }
-  ],
   "navigation": {
     "tabs": [
       {
@@ -42,33 +26,43 @@
           {
             "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "installation/docker",
-              "installation/source"
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/authentication",
+              "concepts/docker-profiles"
             ]
           },
           {
             "group": "Guides",
             "pages": [
-              "guides/switch-from-cloud",
-              "guides/sdk-integration",
+              "guides/upstash-redis-sdk",
               "guides/dashboard",
-              "guides/rate-limits",
-              "guides/cli",
-              "guides/docker-profiles",
-              "guides/security",
+              "guides/rate-limit-simulation",
+              "guides/data-management",
               "guides/qstash",
               "guides/testing-tools"
             ]
           },
           {
-            "group": "Resources",
+            "group": "Configuration",
             "pages": [
-              "testing/manual",
-              "testing/automated",
-              "troubleshooting",
-              "contributing"
+              "configuration/server-options",
+              "configuration/environment-variables",
+              "configuration/security"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/faq"
             ]
           }
         ]
@@ -77,28 +71,23 @@
         "tab": "API Reference",
         "groups": [
           {
-            "group": "Overview",
+            "group": "REST API",
             "pages": [
-              "api-reference/introduction",
-              "api-reference/authentication"
+              "api/overview",
+              "api/commands",
+              "api/pipeline",
+              "api/pubsub"
             ]
           },
           {
-            "group": "Endpoints",
+            "group": "CLI",
             "pages": [
-              "api-reference/commands",
-              "api-reference/pipeline",
-              "api-reference/multi-exec",
-              "api-reference/pubsub",
-              "api-reference/monitor",
-              "api-reference/health"
+              "cli/overview",
+              "cli/commands"
             ]
           }
         ]
       }
     ]
-  },
-  "footerSocials": {
-    "github": "https://github.com/aine1100/Upstash-Redis-Local-server"
   }
 }

@@ -1,0 +1,113 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Upstash Redis Local",
+  "projectDescription": "A local REST API server that mimics the Upstash Redis REST API, enabling unlimited local development and testing without cloud rate limits.",
+  "theme": "aspen",
+  "primaryColor": "#65eac2",
+  "lightColor": "#647c7c",
+  "darkColor": "#040605",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/authentication",
+              "concepts/docker-profiles"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/upstash-redis-sdk",
+              "guides/dashboard",
+              "guides/rate-limit-simulation",
+              "guides/data-management"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/server-options",
+              "configuration/environment-variables",
+              "configuration/security"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/commands",
+              "api/pipeline",
+              "api/pubsub"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/commands"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Upstash REST API compatibility — drop-in replacement for @upstash/redis SDK",
+    "Unlimited local requests with no cloud rate limits or daily quotas",
+    "Pipeline and MULTI/EXEC transaction support",
+    "Pub/Sub and live monitor via Server-Sent Events",
+    "Web dashboard showing requests, cloud quota saved, and key browser",
+    "Rate-limit simulator to test fallback logic against cloud quota/RPS limits",
+    "Read-only token support mirroring Upstash cloud behavior",
+    "Docker Compose profiles: default bundled Redis, external Redis, Redis Stack",
+    "CLI tool (upstash-local) for profile switching, seeding, export, and import",
+    "Security hardening: localhost-only binding, dangerous command blocking, CORS control",
+    "Tiny ~10MB Docker image with connection pooling"
+  ],
+  "publicApiSurface": [
+    "GET/POST /<COMMAND>/[args...] — single command via URL path segments",
+    "POST / — single command via JSON body [\"CMD\", arg1, arg2, ...]",
+    "POST /pipeline — batch commands [[\"CMD1\",...],[\"CMD2\",...]]",
+    "POST /multi-exec — atomic MULTI/EXEC transaction",
+    "POST /publish/<channel> — publish a Pub/Sub message",
+    "GET /subscribe/<channel> — SSE stream for Pub/Sub subscription",
+    "GET /monitor — SSE stream of live Redis monitor output",
+    "GET /health — health check {\"status\":\"healthy\",\"redis\":\"connected\"}",
+    "GET /ready — readiness probe",
+    "GET /dashboard — web usage dashboard",
+    "GET /dashboard/api/stats — JSON metrics snapshot",
+    "GET /dashboard/api/keys — key browser with type/TTL/value",
+    "upstash-local use dev|cloud — switch environment profile",
+    "upstash-local status — show active profile",
+    "upstash-local seed --keys N --prefix P — populate test data",
+    "upstash-local export --output dump.json --pattern '*'",
+    "upstash-local import --input dump.json",
+    "upstash-local ping [url]",
+    "upstash-local generate-token"
+  ]
+}

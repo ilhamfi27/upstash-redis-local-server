@@ -1,0 +1,142 @@
+---
+title: "Simulate Upstash Cloud Rate Limits on Your Local Server"
+sidebarTitle: "Rate Limits"
+description: "Impose a daily quota or per-second rate limit locally to test your application's 429 error handling and fallback logic before deploying to the cloud."
+---
+
+One of the most valuable things you can do before going to production is verify that your application handles rate limit errors gracefully. Upstash Redis Local lets you impose the same quota and rate-limit constraints that the Upstash cloud enforces, so you can trigger HTTP 429 responses on your own machine and watch your fallback logic kick in — no burned cloud quota, no production incidents.
+
+## Why Simulate Rate Limits
+
+The Upstash free tier allows 10,000 requests per day. If your app exceeds that limit on the cloud, every subsequent request fails until the quota resets. Without local simulation, you won't know whether your application handles this case correctly until it's already broken in production.
+
+Simulating rate limits locally lets you:
+
+- Confirm that your app catches and handles `429 Too Many Requests` responses
+- Test retry logic, circuit breakers, and user-facing error messages
+- Measure how many requests your app actually makes under realistic load
+
+## Start the Server with Rate Limit Flags
+
+Pass one or both flags when you start the server:
+
+```bash
+# Cap at 100 requests per day and 10 requests per second
+upstash-redis-local --simulate-quota 100 --simulate-rps 10
+```
+
+<CardGroup cols={2}>
+  <Card title="--simulate-quota N" icon="calendar">
+    Sets a daily request quota. After N requests, the server returns HTTP 429 for every subsequent request until you restart it.
+  </Card>
+  <Card title="--simulate-rps N" icon="gauge-high">
+    Sets a per-second sliding window limit. If your app sends more than N requests in any one-second window, the excess requests return HTTP 429.
+  </Card>
+</CardGroup>
+
+You can use either flag independently or combine both. The server checks the daily quota first, then the per-second limit.
+
+## Configure via Environment Variables
+
+If you prefer to set limits through your environment rather than CLI flags, use the corresponding variables:
+
+```bash
+SIMULATE_QUOTA=10000 SIMULATE_RPS=100 upstash-redis-local
+```
+
+Or add them to your `.env.local` file:
+
+```bash
+UPSTASH_REDIS_REST_URL=http://localhost:8000
+UPSTASH_REDIS_REST_TOKEN=local-dev-token
+SIMULATE_QUOTA=10000
+SIMULATE_RPS=100
+```
+
+<Note>
+  CLI flags take precedence over environment variables when both are provided.
+</Note>
+
+## What Happens When a Limit Is Hit
+
+When either limit is exceeded, the server returns an HTTP `429 Too Many Requests` response with a JSON error body:
+
+<Tabs>
+
+<Tab title="Daily quota exceeded">
+
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+
+{"error": "ERR max daily request limit exceeded"}
+```
+
+</Tab>
+
+<Tab title="RPS limit exceeded">
+
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+
+{"error": "ERR rate limit exceeded, slow down"}
+```
+
+</Tab>
+
+</Tabs>
+
+This is the same format the Upstash cloud returns, so any error handling code you write against the local server will work correctly when you deploy.
+
+## Test Your Fallback Logic
+
+The most effective testing pattern is to set a very small quota so you can trigger the limit quickly:
+
+<Steps>
+
+<Step title="Start with a tiny quota">
+  Launch the server with a quota small enough to exhaust in a few seconds:
+
+  ```bash
+  upstash-redis-local --simulate-quota 5 --simulate-rps 10
+  ```
+</Step>
+
+<Step title="Run your application">
+  Execute the code path you want to test. After five requests, every call will return `429`.
+</Step>
+
+<Step title="Observe your app's behaviour">
+  Confirm that your application handles the error correctly — shows the right user-facing message, retries with back-off, or falls back to a cache. Check your logs for unhandled exceptions.
+</Step>
+
+<Step title="Fix any gaps">
+  Update your error handling code until the app behaves as expected under the quota limit.
+</Step>
+
+</Steps>
+
+## Reset the Quota Counter
+
+The daily quota counter lives entirely in memory. To reset it, restart the server:
+
+```bash
+# Stop the server (Ctrl+C), then restart
+upstash-redis-local --simulate-quota 100 --simulate-rps 10
+```
+
+The counter starts at zero every time the server starts. There is no persistent quota state between runs.
+
+<Tip>
+  During a test suite, start a fresh server instance per test run to guarantee a clean quota counter. Many test frameworks support `beforeAll` / `afterAll` hooks where you can launch and stop the server programmatically.
+</Tip>
+
+## Rate Limit Check Order
+
+When both `--simulate-quota` and `--simulate-rps` are active, the server applies them in this order:
+
+1. **Daily quota** — if total requests for the current session have reached the cap, return `429` immediately.
+2. **Per-second sliding window** — if the daily quota has not been exceeded, check whether the requests-per-second limit is breached in the current window, and return `429` if so.
+
+A request only succeeds if it passes both checks.

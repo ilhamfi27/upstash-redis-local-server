@@ -1,75 +1,75 @@
 ---
-title: Introduction
-description: Run Upstash Redis locally with unlimited requests — no cloud rate limits, full REST API compatibility.
+title: "Upstash Redis Local: Zero-Limit Local Redis for Development"
+sidebarTitle: "Home"
+description: "Run a local Upstash-compatible Redis REST API server with no rate limits, no quotas, and full @upstash/redis SDK support for development and testing."
 ---
 
-Upstash Redis Local is a lightweight HTTP proxy that connects your apps to a real Redis instance while speaking the same [Upstash REST API](https://upstash.com/docs/redis/features/restapi) your production code already uses.
-
-Develop against `@upstash/redis` without burning cloud quota, hitting daily limits, or paying per request.
+Upstash Redis Local is a lightweight local server that speaks the exact same REST API as Upstash Redis in the cloud. Point your `@upstash/redis` SDK — or any HTTP client — at `http://localhost:8000` and get **unlimited requests**, no daily quotas, and no billing surprises while you build.
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Get running in under 2 minutes with Docker.
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Run the server in under a minute using Docker Compose or the startup script.
   </Card>
-  <Card title="Switch from Cloud" icon="cloud-arrow-down" href="/guides/switch-from-cloud">
-    Point your app at localhost — zero code changes.
+  <Card title="Installation" icon="download" href="/installation">
+    Install via Docker, Homebrew, or build from source — your choice.
   </Card>
-  <Card title="API Reference" icon="code" href="/api-reference/introduction">
-    Full REST endpoint documentation.
+  <Card title="@upstash/redis SDK" icon="code" href="/guides/upstash-redis-sdk">
+    Drop in your existing SDK code — just swap the URL and token.
   </Card>
-  <Card title="Dashboard" icon="chart-line" href="/guides/dashboard">
-    Track requests and cloud quota saved.
+  <Card title="REST API Reference" icon="book" href="/api/overview">
+    Explore every endpoint: commands, pipelines, pub/sub, and more.
   </Card>
 </CardGroup>
 
-## Why use this?
+## Why use Upstash Redis Local?
 
-| Cloud Upstash | Upstash Redis Local |
-| --- | --- |
-| 10,000 commands/day (free tier) | **Unlimited** |
-| Pay per request | **Free** |
-| Rate limits under load | **No throttling** |
-| Shared prod credentials | **Isolated local data** |
+The Upstash free tier limits you to 10,000 requests per day. During active development you can blow through that in minutes. Upstash Redis Local removes that ceiling entirely — every call hits a real Redis database on your machine.
 
-<Note>
-  This is a **local development tool**, not a replacement for Upstash Cloud in production. Use it during dev, testing, and CI — then deploy to [Upstash Cloud](https://upstash.com) for production.
-</Note>
+<CardGroup cols={3}>
+  <Card title="Unlimited Requests" icon="infinity">
+    No daily quota. No rate limits. Run as many commands as you need.
+  </Card>
+  <Card title="100% API Compatible" icon="check">
+    Identical REST surface to Upstash cloud — switch back with one env change.
+  </Card>
+  <Card title="Tiny Footprint" icon="feather">
+    ~10 MB Docker image. Starts in seconds. Works on any machine.
+  </Card>
+</CardGroup>
 
-## How it works
-
-```mermaid
-flowchart LR
-    App["Your App\n@upstash/redis SDK"]
-    Proxy["Upstash Redis Local\n:8000"]
-    Redis["Redis\n:6379"]
-
-    App -->|"REST API"| Proxy
-    Proxy -->|"Redis protocol"| Redis
-```
-
-Your app sends HTTP requests to `localhost:8000`. The Go server translates them into native Redis commands — same SDK, same API shape, zero cloud calls.
-
-## Key features
-
-- **Full REST API** — commands, pipeline, multi-exec, pub/sub, monitor
-- **Read-only tokens** — like Upstash Cloud's readonly token
-- **Usage dashboard** — see how many cloud requests you've saved
-- **Rate-limit simulator** — test fallback logic without touching cloud
-- **CLI tools** — seed, export, import, env switching
-- **Docker profiles** — bundled Redis, external Redis, Redis Stack
-- **CORS enabled** — browser and edge runtime dev
-- **Tiny image** — ~10MB Alpine-based container
-
-## What's next?
+## Get started in 3 steps
 
 <Steps>
-  <Step title="Install">
-    Run `./start.sh` or `docker compose up -d`. See [Docker installation](/installation/docker).
+  <Step title="Clone and start the server">
+    ```bash
+    git clone https://github.com/aine1100/Upstash-Redis-Local-server.git
+    cd Upstash-Redis-Local-server
+    ./start.sh
+    ```
+    The script detects Docker, picks the right profile, and launches the server on port 8000.
   </Step>
-  <Step title="Configure your app">
-    Set `UPSTASH_REDIS_REST_URL=http://localhost:8000`. See [Switch from Cloud](/guides/switch-from-cloud).
+  <Step title="Verify it's running">
+    ```bash
+    curl "http://localhost:8000/PING?_token=local-dev-token"
+    # → {"result":"PONG"}
+    ```
   </Step>
-  <Step title="Verify">
-    Open the [dashboard](http://localhost:8000/dashboard) or run [manual tests](/testing/manual).
+  <Step title="Point your app at the local server">
+    ```typescript
+    import { Redis } from '@upstash/redis'
+
+    const redis = new Redis({
+      url: 'http://localhost:8000',
+      token: 'local-dev-token',
+    })
+
+    await redis.set('hello', 'world')
+    console.log(await redis.get('hello')) // 'world'
+    ```
+    No other code changes needed — the SDK is fully compatible.
   </Step>
 </Steps>
+
+<Tip>
+  Open the **dashboard** at [http://localhost:8000/dashboard](http://localhost:8000/dashboard) to browse your keys, track request counts, and see how much cloud quota you've saved.
+</Tip>

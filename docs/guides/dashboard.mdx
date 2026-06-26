@@ -1,76 +1,132 @@
 ---
-title: Dashboard
-description: Monitor request usage, cloud quota saved, and browse Redis keys in the browser.
+title: "Monitor Requests, Quota Savings, and Keys in the Dashboard"
+sidebarTitle: "Dashboard"
+description: "Use the built-in web dashboard to track request counts, measure cloud quota savings, and browse every key stored in your local Redis server in real time."
 ---
 
-The built-in dashboard gives you visibility into local usage — and shows how much Upstash Cloud quota you've saved.
+Upstash Redis Local ships with a built-in web dashboard that gives you a real-time view of your local server without any extra tooling. Open it in a browser while your app is running and watch requests flow in, inspect individual keys, and confirm that your application is hitting the local server instead of the cloud.
 
-## Open the dashboard
+## Access the Dashboard
+
+Start your local server, then navigate to the dashboard in any browser:
 
 ```
 http://localhost:8000/dashboard
 ```
 
-No auth required for the UI. Key browsing requires your API token.
+No login is required by default. The dashboard auto-refreshes its stats so you can watch activity live as your application makes requests.
 
-## What you'll see
+## What the Dashboard Shows
 
-<CardGroup cols={2}>
-  <Card title="Total Requests" icon="hashtag">
-    Every authenticated API call is counted.
-  </Card>
-  <Card title="Cloud Quota Saved" icon="shield-check">
-    Same count — requests that would have hit Upstash Cloud.
-  </Card>
-  <Card title="Free Tier Limit" icon="gauge">
-    Reference line at 10,000/day (Upstash free tier).
-  </Card>
-  <Card title="Uptime" icon="clock">
-    How long the server has been running.
-  </Card>
-</CardGroup>
+### Request Statistics
 
-## Key browser
+The top section of the dashboard displays a live summary of server activity:
 
-1. Enter a key pattern (default: `*`)
-2. Enter your token (`local-dev-token`)
-3. Click **Browse Keys**
+- **Total requests** — cumulative request count since the server started
+- **Uptime** — how long the server has been running
+- **Per-command breakdown** — a table of every Redis command (GET, SET, HSET, etc.) and how many times it has been called
 
-Results show key name, type, TTL, and a preview of the value.
+### Cloud Quota Saved Widget
 
-## Stats API
+Below the stats you'll find the **Cloud Quota Saved** widget. It shows how many requests you've made locally that would have counted against Upstash's 10,000 request/day free tier if you had been hitting the cloud. Use this to get a realistic sense of your application's request volume before you go live.
 
-Programmatic access to metrics:
+<Info>
+  The widget displays `cloud_quota_remaining` — the number of free-tier requests you would still have available if today's local traffic had hit the cloud. A low number here is a signal to review your request patterns before deploying.
+</Info>
+
+### Key Browser
+
+The key browser lists every key currently stored in the server. For each key you can see:
+
+- **Key name**
+- **Type** (string, hash, list, set, zset)
+- **TTL** — time to live in seconds, or `-1` for keys that never expire
+- **Value** — the stored value, rendered according to type
+
+Use the key browser to verify that your application is writing the keys you expect, check that TTLs are being set correctly, and inspect values during debugging.
+
+## API Endpoints
+
+The dashboard exposes two JSON endpoints you can query directly or integrate into scripts.
+
+### `/dashboard/api/stats`
+
+Returns the full statistics object:
 
 ```bash
 curl http://localhost:8000/dashboard/api/stats
 ```
 
-Response:
-
 ```json
 {
-  "total_requests": 142,
+  "total_requests": 1523,
   "uptime_seconds": 3600,
-  "commands": { "GET": 80, "SET": 40, "PING": 22 },
+  "commands": {
+    "GET": 800,
+    "SET": 500,
+    "PING": 223
+  },
   "free_tier_quota": 10000,
-  "quota_saved": 142,
-  "cloud_quota_remaining": 9858,
+  "quota_saved": 1523,
+  "cloud_quota_remaining": 8477,
   "unlimited_local": true
 }
 ```
 
-## Keys API
+### `/dashboard/api/keys`
+
+Returns all keys with their type, TTL, and value:
 
 ```bash
-curl "http://localhost:8000/dashboard/api/keys?pattern=dev:*&_token=local-dev-token"
+curl http://localhost:8000/dashboard/api/keys
 ```
 
-Returns all matching keys with type, value, and TTL.
+```json
+[
+  { "key": "session:user:42", "type": "string", "value": "abc123", "ttl": 3542 },
+  { "key": "counter", "type": "string", "value": "17", "ttl": -1 },
+  { "key": "user:1", "type": "hash", "value": { "name": "Alice", "role": "admin" }, "ttl": -1 }
+]
+```
 
-## Use cases
+<Tip>
+  Use `curl http://localhost:8000/dashboard/api/keys | jq` for pretty-printed output in your terminal while debugging.
+</Tip>
 
-- **During dev** — watch request count climb during hot reload; see why cloud quota disappears fast
-- **After test runs** — confirm how many commands your suite executes
-- **Debugging** — browse keys without Redis CLI or Redis Insight
-- **Demos** — show stakeholders unlimited local dev vs cloud limits
+## Enable Dashboard Authentication
+
+By default the dashboard is open to anyone who can reach the port. If you're running Upstash Redis Local in a shared or networked environment, require authentication by setting an environment variable before you start the server:
+
+```bash
+UPSTASH_REQUIRE_DASHBOARD_AUTH=true upstash-redis-local
+```
+
+When this flag is set, the `/dashboard/api/*` endpoints require the same token used for Redis commands. The dashboard UI page itself remains accessible without a token, but all API data endpoints are protected. Pass the token as a Bearer header:
+
+```bash
+curl -H "Authorization: Bearer local-dev-token" http://localhost:8000/dashboard/api/stats
+```
+
+<Warning>
+  Without `UPSTASH_REQUIRE_DASHBOARD_AUTH=true`, anyone who can reach the port can read your keys and stats through the dashboard API endpoints. Enable auth whenever the server is reachable beyond your own machine.
+</Warning>
+
+## Verify Your App Is Hitting the Right Server
+
+A quick way to confirm that your application is targeting the local server (and not accidentally hitting the cloud) is to open the dashboard before and after running your app, then check whether the **Total requests** counter increased.
+
+<Steps>
+
+<Step title="Open the dashboard">
+  Navigate to `http://localhost:8000/dashboard` and note the current total request count.
+</Step>
+
+<Step title="Run your application">
+  Start your app or execute the code path you want to verify.
+</Step>
+
+<Step title="Check the counter">
+  Refresh the dashboard. If total requests increased and the per-command table reflects the operations you expected, your app is correctly pointed at the local server.
+</Step>
+
+</Steps>

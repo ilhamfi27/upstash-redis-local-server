@@ -1,0 +1,78 @@
+---
+title: "upstash-local CLI: Manage Your Local Redis Dev Env"
+sidebarTitle: "CLI Overview"
+description: "Use the upstash-local CLI to switch profiles, seed test data, export and import keys, and health-check your local Upstash Redis server."
+---
+
+The `upstash-local` CLI is a companion tool for the Upstash Redis Local server. It gives you a set of focused subcommands to manage everything around local development: switching between local and cloud environments, populating your server with realistic test data, snapshotting and restoring key sets, and verifying that your server is reachable — all from your terminal without writing extra scripts.
+
+<Note>
+  `upstash-local` (the CLI) and `upstash-redis-local` (the server) are two separate binaries. The CLI talks to a running server over the Upstash Redis REST API; it does not start or stop the server itself.
+</Note>
+
+## Build the CLI
+
+Run the following command from the root of the repository to compile the binary into `./bin/upstash-local`:
+
+```bash
+make build-cli
+```
+
+After the build completes, you can run commands directly:
+
+```bash
+./bin/upstash-local <command> [flags]
+```
+
+Add `./bin` to your `PATH` so you can call `upstash-local` from any directory.
+
+## Usage pattern
+
+Every invocation follows the same structure:
+
+```bash
+upstash-local <command> [flags]
+```
+
+Flags are always optional unless noted otherwise. Defaults are designed to work with a server running on `http://localhost:8000` with the default development token, so you can run most commands without specifying any flags during local development.
+
+## Subcommand reference
+
+| Command | Description |
+|---|---|
+| `use <profile>` | Switch your app's target environment by writing environment variables to a `.env` file |
+| `status` | Display the currently active profile URL and token |
+| `seed` | Populate the server with a configurable number of random string keys |
+| `export` | Dump all matching keys and their values to a JSON file |
+| `import` | Restore keys from a JSON file previously created by `export` |
+| `ping` | Send a `PING` to the server and report latency; exits non-zero on failure |
+| `generate-token` | Generate a cryptographically random base64 token for secure server configuration |
+
+## Workflow example
+
+A typical local-development session looks like this:
+
+<Steps>
+  <Step title="Start the server">
+    Launch `upstash-redis-local` so the REST API is available on port 8000.
+  </Step>
+  <Step title="Point your app at the local server">
+    Run `upstash-local use dev` to write the correct URL and token into `.env.local`.
+  </Step>
+  <Step title="Verify the connection">
+    Run `upstash-local ping` to confirm the server responds before you start coding.
+  </Step>
+  <Step title="Seed test data">
+    Run `upstash-local seed --keys 500 --prefix user:` to populate the server with sample data your app can read.
+  </Step>
+  <Step title="Snapshot your state">
+    Run `upstash-local export` at any point to save a `dump.json` snapshot you can restore later or share with teammates.
+  </Step>
+  <Step title="Switch to cloud when ready">
+    Run `upstash-local use cloud` to read your production credentials from `.env.cloud` and point your app at Upstash Cloud.
+  </Step>
+</Steps>
+
+<Tip>
+  Commit your `dump.json` snapshots to version control so the whole team starts with the same test data. Run `upstash-local import` as part of your project's setup script to restore it automatically.
+</Tip>

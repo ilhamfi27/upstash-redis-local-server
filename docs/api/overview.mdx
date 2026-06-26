@@ -1,0 +1,133 @@
+---
+title: "Upstash Redis Local REST API Overview and Reference"
+sidebarTitle: "Overview"
+description: "Complete reference for the Upstash Redis Local REST API — authentication methods, response formats, optional headers, and all available endpoints."
+---
+
+The Upstash Redis Local server exposes a REST API that is 100% compatible with the Upstash cloud Redis REST API. Every endpoint, authentication method, and response envelope works identically, so any client or code you write against the local server will run against Upstash cloud without changes. The server listens on `http://localhost:8000` by default.
+
+## Base URL
+
+```
+http://localhost:8000
+```
+
+## Authentication
+
+Every request must include your token. The local server ships with the default token `local-dev-token`. You can supply it in three equivalent ways:
+
+<Tabs>
+  <Tab title="Query Parameter">
+    Append `_token=<your-token>` to the URL. This is the most convenient style for quick `curl` tests.
+
+    ```bash
+    curl "http://localhost:8000/PING?_token=local-dev-token"
+    ```
+  </Tab>
+  <Tab title="Bearer Header">
+    Pass the token as a Bearer credential in the `Authorization` header. This is the recommended style for application code.
+
+    ```bash
+    curl http://localhost:8000/PING \
+      -H "Authorization: Bearer local-dev-token"
+    ```
+  </Tab>
+  <Tab title="Basic Auth">
+    Base64-encode the string `unused:<your-token>` and pass it as a Basic credential. Use this when your HTTP client only supports Basic authentication.
+
+    ```bash
+    # base64("unused:local-dev-token") = dW51c2VkOmxvY2FsLWRldi10b2tlbg==
+    curl http://localhost:8000/PING \
+      -H "Authorization: Basic dW51c2VkOmxvY2FsLWRldi10b2tlbg=="
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  All three authentication styles are accepted on every endpoint, including `/pipeline`, `/multi-exec`, `/publish`, `/subscribe`, and `/monitor`.
+</Note>
+
+## Response Format
+
+All responses use a consistent JSON envelope.
+
+**Success**
+
+```json
+{"result": <value>}
+```
+
+The `result` field holds the Redis return value. The type mirrors what Redis returns: a string for `GET`, an integer for `INCR`, an array for `KEYS`, `null` for missing keys, and so on.
+
+**Error**
+
+```json
+{"error": "<message>"}
+```
+
+Error responses use standard HTTP status codes (4xx / 5xx) alongside the JSON body so that HTTP-aware clients can detect failures without parsing JSON.
+
+## Optional Response Headers
+
+You can attach either header to any request to control how the response is serialised.
+
+<ParamField header="Upstash-Encoding" type="string">
+  Set to `base64` to have the server base64-encode every string value in the response. Useful when your payload may contain binary data or characters that are awkward to handle in JSON.
+
+  ```bash
+  curl "http://localhost:8000/GET/mykey?_token=local-dev-token" \
+    -H "Upstash-Encoding: base64"
+  # → {"result":"bXl2YWx1ZQ=="}
+  ```
+</ParamField>
+
+<ParamField header="Upstash-Response-Format" type="string">
+  Set to `resp2` to receive the raw RESP2 wire format instead of JSON. Primarily useful for low-level debugging or when building a custom Redis client.
+
+  ```bash
+  curl "http://localhost:8000/PING?_token=local-dev-token" \
+    -H "Upstash-Response-Format: resp2"
+  ```
+</ParamField>
+
+## Health Endpoints
+
+Use `/health` and `/ready` to check whether the server and its underlying Redis connection are operational. Both endpoints return the same response shape.
+
+```bash
+curl http://localhost:8000/health
+```
+
+**Healthy response (HTTP 200)**
+
+```json
+{"status": "healthy", "redis": "connected"}
+```
+
+**Unhealthy response (HTTP 503)**
+
+```json
+{"status": "unhealthy", "redis": "disconnected"}
+```
+
+<Tip>
+  Wire `/health` into your Docker Compose `healthcheck` or Kubernetes liveness probe so that dependent services only start after the local server is fully ready.
+</Tip>
+
+## Available Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/<COMMAND>[/arg1/arg2/...]` | `GET` or `POST` | Execute a single Redis command via URL path |
+| `/` | `POST` | Execute a single Redis command via JSON body |
+| `/pipeline` | `POST` | Execute multiple commands in one round-trip (not atomic) |
+| `/multi-exec` | `POST` | Execute multiple commands as an atomic transaction |
+| `/publish/<channel>` | `POST` | Publish a message to a Pub/Sub channel |
+| `/subscribe/<channel>` | `GET` | Subscribe to a channel via Server-Sent Events |
+| `/monitor` | `GET` | Stream live Redis `MONITOR` output via Server-Sent Events |
+| `/health` | `GET` or `POST` | Check server and Redis connection health |
+| `/ready` | `GET` | Alias for `/health` |
+
+<Note>
+  The local server is fully compatible with the [Upstash Redis SDK](https://github.com/upstash/redis-js). Point the SDK at `http://localhost:8000` with token `local-dev-token` and all commands, pipelines, and transactions work without modification.
+</Note>

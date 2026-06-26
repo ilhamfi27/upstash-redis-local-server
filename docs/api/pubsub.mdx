@@ -1,0 +1,130 @@
+---
+title: "Pub/Sub and Monitor Streaming via Server-Sent Events"
+sidebarTitle: "Pub/Sub"
+description: "Publish messages to channels, subscribe to real-time message streams, and monitor live Redis traffic — all over Server-Sent Events from the local server."
+---
+
+The local server supports Redis Pub/Sub through a simple HTTP interface. You publish messages with a standard `POST` request, and you receive messages by opening a persistent Server-Sent Events (SSE) stream. A separate `/monitor` endpoint lets you stream every Redis command the server processes in real time — useful for debugging and observing what your application is doing under the hood.
+
+## Publish
+
+Send a message to a channel by posting to `/publish/<channel>`. The request body is the message payload as a JSON string. The server returns the number of active subscribers that received the message.
+
+```bash
+curl -X POST http://localhost:8000/publish/mychannel \
+  -H "Authorization: Bearer local-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '"hello world"'
+```
+
+```json
+{"result": 1}
+```
+
+<Note>
+  A result of `0` means the message was published successfully but no subscribers were listening at that moment. Messages are not queued — if no subscriber is connected when you publish, the message is discarded.
+</Note>
+
+<ParamField path="channel" type="string" required>
+  The name of the channel to publish to. Channel names are case-sensitive and may contain letters, numbers, hyphens, and underscores.
+</ParamField>
+
+---
+
+## Subscribe
+
+Open a long-lived SSE connection to `/subscribe/<channel>` to receive messages in real time. The server keeps the connection open and pushes an event each time a message arrives on the channel.
+
+```bash
+curl "http://localhost:8000/subscribe/mychannel?_token=local-dev-token" \
+  -H "Accept: text/event-stream"
+```
+
+### SSE Event Format
+
+The stream delivers plain-text `data:` lines. Each event is a comma-separated string with three fields:
+
+| Event type | Format | Meaning |
+|---|---|---|
+| Subscription confirmation | `data: subscribe,<channel>,<subscriber-count>` | Sent once immediately after you connect |
+| Incoming message | `data: message,<channel>,<payload>` | Sent every time a message is published to the channel |
+
+**Example stream**
+
+```
+data: subscribe,mychannel,1
+
+data: message,mychannel,hello world
+
+data: message,mychannel,second message
+
+```
+
+<ResponseField name="subscribe event" type="string">
+  Confirms that your subscription is active. The third field is the total number of subscribers on this channel, including yourself.
+</ResponseField>
+
+<ResponseField name="message event" type="string">
+  Carries a published message. The third field is the raw message payload exactly as it was published.
+</ResponseField>
+
+### JavaScript EventSource Example
+
+Use the browser's built-in `EventSource` API (or a Node.js equivalent) to subscribe from client-side or server-side JavaScript.
+
+```javascript
+const es = new EventSource(
+  "http://localhost:8000/subscribe/mychannel?_token=local-dev-token"
+);
+
+es.onmessage = (event) => {
+  const [type, channel, payload] = event.data.split(",");
+
+  if (type === "subscribe") {
+    console.log(`Subscribed to ${channel}. Subscribers: ${payload}`);
+  } else if (type === "message") {
+    console.log(`[${channel}] ${payload}`);
+  }
+};
+
+es.onerror = (err) => {
+  console.error("SSE connection error:", err);
+  es.close();
+};
+```
+
+<Note>
+  The local server enables CORS by default, so `EventSource` connections from a browser on a different port (for example, a Vite dev server on `localhost:5173`) work without any additional configuration.
+</Note>
+
+<Tip>
+  In Node.js 18+, you can use the native `fetch` API with a streaming response body, or install the `eventsource` package as a drop-in polyfill for `EventSource`.
+</Tip>
+
+---
+
+## Monitor
+
+The `/monitor` endpoint streams a live log of every Redis command processed by the server as an SSE event stream. This mirrors the behaviour of the Redis `MONITOR` command in `redis-cli`.
+
+```bash
+curl "http://localhost:8000/monitor?_token=local-dev-token" \
+  -H "Accept: text/event-stream"
+```
+
+**Example output**
+
+```
+data: 1717000000.123456 [0 127.0.0.1:54321] "SET" "foo" "bar"
+
+data: 1717000001.654321 [0 127.0.0.1:54321] "GET" "foo"
+
+data: 1717000002.111111 [0 127.0.0.1:54321] "INCR" "counter"
+
+```
+
+Each line follows the standard Redis MONITOR format: a Unix timestamp, the database index and client address in brackets, followed by the command and its arguments quoted and space-separated.
+
+<Warning>
+  The `/monitor` endpoint reflects all commands hitting Redis, including internal keep-alive commands the server may issue. Use it for development debugging only — do not leave a monitor stream open in production-like load tests as it has a measurable performance impact on Redis throughput.
+</Warning>
