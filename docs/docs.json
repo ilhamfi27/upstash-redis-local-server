@@ -2,15 +2,15 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "Upstash Redis Local",
   "theme": "aspen",
-  "favicon": "https://media.brand.dev/7d108835-69f7-4a45-9110-a9491bb3a839.png",
+  "favicon": "/favicon.svg",
   "logo": {
-    "light": "https://media.brand.dev/a5c1d954-f019-4984-a018-9311563f59d9.svg",
-    "dark": "https://media.brand.dev/a5c1d954-f019-4984-a018-9311563f59d9.svg"
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
   },
   "colors": {
-    "primary": "#65eac2",
-    "light": "#647c7c",
-    "dark": "#040605"
+    "primary": "#0EA5E9",
+    "light": "#38BDF8",
+    "dark": "#0284C7"
   },
   "navbar": {
     "primary": {
