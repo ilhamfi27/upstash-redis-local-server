@@ -22,7 +22,7 @@ FROM alpine:3.19
 # Add labels for better discoverability
 LABEL org.opencontainers.image.title="upstash-redis-local"
 LABEL org.opencontainers.image.description="A local server that mimics upstash-redis for local testing"
-LABEL org.opencontainers.image.source="https://github.com/aine1100/Upstash-Redis-Local-server"
+LABEL org.opencontainers.image.source="https://github.com/ilhamfi27/upstash-redis-local-server"
 
 # Install ca-certificates and wget for healthchecks
 RUN apk add --no-cache ca-certificates wget

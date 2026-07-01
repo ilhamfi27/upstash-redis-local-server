@@ -20,6 +20,8 @@ var Version = "development"
 
 type Cmd struct {
 	RedisAddr              string
+	RedisUsername          string
+	RedisPassword          string
 	Addr                   string
 	ApiToken               string
 	ReadOnlyToken          string
@@ -104,11 +106,15 @@ func main() {
 	setupFlags(flag.CommandLine)
 
 	defaultRedis := getEnvOrDefault("REDIS_ADDR", ":6379")
+	defaultRedisUsername := getEnvOrDefault("REDIS_USERNAME", "")
+	defaultRedisPassword := getEnvOrDefault("REDIS_PASSWORD", "")
 	defaultAddr := getEnvOrDefault("UPSTASH_ADDR", ":8000")
 	defaultToken := getEnvOrDefault("UPSTASH_TOKEN", "upstash")
 	defaultReadOnly := getEnvOrDefault("UPSTASH_READONLY_TOKEN", "")
 
 	redisAddr := flag.String("redis", defaultRedis, "Redis server address (env: REDIS_ADDR)")
+	redisUsername := flag.String("redis-username", defaultRedisUsername, "Redis ACL username (env: REDIS_USERNAME)")
+	redisPassword := flag.String("redis-password", defaultRedisPassword, "Redis password (env: REDIS_PASSWORD)")
 	addr := flag.String("addr", defaultAddr, "Webserver address (env: UPSTASH_ADDR)")
 	apiToken := flag.String("token", defaultToken, "API token (env: UPSTASH_TOKEN)")
 	readOnlyToken := flag.String("readonly-token", defaultReadOnly, "Read-only API token (env: UPSTASH_READONLY_TOKEN)")
@@ -142,6 +148,8 @@ func main() {
 
 	cmd := Cmd{
 		RedisAddr:              *redisAddr,
+		RedisUsername:          *redisUsername,
+		RedisPassword:          *redisPassword,
 		ApiToken:               *apiToken,
 		ReadOnlyToken:          *readOnlyToken,
 		Addr:                   listenAddr,
@@ -181,7 +189,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	pool := createRedisPool(cmd.RedisAddr, cmd.MaxRetries, cmd.RetryDelayMs, logger)
+	pool := createRedisPool(cmd.RedisAddr, cmd.RedisUsername, cmd.RedisPassword, cmd.MaxRetries, cmd.RetryDelayMs, logger)
 	defer pool.Close()
 
 	if err := testRedisConnection(pool, logger); err != nil {
@@ -250,7 +258,7 @@ func main() {
 		Recorder:      recorder,
 		QStash:        qstash,
 		Dial: func() (redis.Conn, error) {
-			return dialWithRetry(cmd.RedisAddr, 1, cmd.RetryDelayMs, logger)
+			return dialWithRetry(cmd.RedisAddr, cmd.RedisUsername, cmd.RedisPassword, 1, cmd.RetryDelayMs, logger)
 		},
 	}
 	server.Serve()
@@ -280,6 +288,8 @@ ARGUMENTS:
 	--readonly-token   TOKEN  Read-only API token (optional)
 	--addr             ADDR   Listen address (default: :8000)
 	--redis            ADDR   Redis address (default: :6379)
+	--redis-username   USER   Redis ACL username (optional)
+	--redis-password   PASS   Redis password (optional)
 	--max-retries      N      Startup connection retries (default: 10)
 	--retry-delay      MS     Retry delay in ms (default: 1000)
 	--simulate-quota   N      Simulate Upstash daily quota (0=unlimited)
@@ -300,6 +310,8 @@ ARGUMENTS:
 
 ENVIRONMENT VARIABLES:
 	REDIS_ADDR                    Redis server address
+	REDIS_USERNAME                Redis ACL username (optional)
+	REDIS_PASSWORD                Redis password (optional)
 	UPSTASH_ADDR                  Webserver address
 	UPSTASH_TOKEN                 Full-access API token
 	UPSTASH_READONLY_TOKEN        Read-only API token
@@ -332,14 +344,14 @@ ENDPOINTS:
 `, Version)
 }
 
-func createRedisPool(addr string, maxRetries int, retryDelayMs int, logger *zap.Logger) *redis.Pool {
+func createRedisPool(addr, username, password string, maxRetries int, retryDelayMs int, logger *zap.Logger) *redis.Pool {
 	return &redis.Pool{
 		MaxIdle:     10,
 		MaxActive:   100,
 		IdleTimeout: 5 * time.Minute,
 		Wait:        true,
 		Dial: func() (redis.Conn, error) {
-			return dialWithRetry(addr, maxRetries, retryDelayMs, logger)
+			return dialWithRetry(addr, username, password, maxRetries, retryDelayMs, logger)
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
 			if time.Since(t) < time.Minute {
@@ -351,16 +363,24 @@ func createRedisPool(addr string, maxRetries int, retryDelayMs int, logger *zap.
 	}
 }
 
-func dialWithRetry(addr string, maxRetries int, retryDelayMs int, logger *zap.Logger) (redis.Conn, error) {
+func dialWithRetry(addr, username, password string, maxRetries int, retryDelayMs int, logger *zap.Logger) (redis.Conn, error) {
 	var conn redis.Conn
 	var err error
 
+	dialOptions := []redis.DialOption{
+		redis.DialConnectTimeout(5 * time.Second),
+		redis.DialReadTimeout(5 * time.Second),
+		redis.DialWriteTimeout(5 * time.Second),
+	}
+	if password != "" {
+		if username != "" {
+			dialOptions = append(dialOptions, redis.DialUsername(username))
+		}
+		dialOptions = append(dialOptions, redis.DialPassword(password))
+	}
+
 	for i := 0; i < maxRetries; i++ {
-		conn, err = redis.Dial("tcp", addr,
-			redis.DialConnectTimeout(5*time.Second),
-			redis.DialReadTimeout(5*time.Second),
-			redis.DialWriteTimeout(5*time.Second),
-		)
+		conn, err = redis.Dial("tcp", addr, dialOptions...)
 		if err == nil {
 			return conn, nil
 		}
