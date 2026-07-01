@@ -86,6 +86,8 @@ services:
       - "127.0.0.1:${UPSTASH_PORT:-8000}:8000"
     environment:
       - REDIS_ADDR=${REDIS_ADDR:-host.docker.internal:6379}
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - UPSTASH_TOKEN=${UPSTASH_TOKEN:-local-dev-token}
       - UPSTASH_READONLY_TOKEN=${UPSTASH_READONLY_TOKEN:-local-readonly-token}
       - UPSTASH_REQUIRE_DASHBOARD_AUTH=${UPSTASH_REQUIRE_DASHBOARD_AUTH:-true}

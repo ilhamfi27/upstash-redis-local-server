@@ -47,6 +47,10 @@ docker compose --profile external up -d upstash-local-external
   On Linux, `host.docker.internal` is not automatically available. Docker Compose adds an `extra_hosts` entry for you, but verify that your Redis process is accessible on `0.0.0.0:6379` (not just `127.0.0.1:6379`).
 </Note>
 
+<Note>
+  If your existing Redis instance requires authentication, set `REDIS_USERNAME`/`REDIS_PASSWORD` (or just `REDIS_PASSWORD` for legacy `requirepass` setups) before starting — see [Environment Variables](/configuration/environment-variables).
+</Note>
+
 ## Stack profile — Redis Stack with JSON support
 
 The `stack` profile replaces the plain Redis container with Redis Stack, which bundles the [RedisJSON](https://redis.io/docs/data-types/json/) module and other extensions. Use this profile whenever your application uses JSON-native commands like `JSON.SET`, `JSON.GET`, `JSON.ARRAPPEND`, or `JSON.NUMINCRBY`.
@@ -103,6 +107,8 @@ Every configurable value has a sensible default. Override any of them in a `.env
 | Variable | Default | Description |
 |---|---|---|
 | `REDIS_PORT` | `6379` | Port Redis listens on (host-side) |
+| `REDIS_USERNAME` | *(none)* | ACL username for the `external` profile's Redis instance |
+| `REDIS_PASSWORD` | *(none)* | Password for the `external` profile's Redis instance |
 | `UPSTASH_PORT` | `8000` | Port the REST API server listens on |
 | `UPSTASH_TOKEN` | `local-dev-token` | Read-write API token |
 | `UPSTASH_READONLY_TOKEN` | `local-readonly-token` | Read-only API token |

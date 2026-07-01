@@ -45,12 +45,16 @@ ARGUMENTS:
     --token       TOKEN  The API token to accept as authorised (default: upstash)
     --addr        ADDR   Address for the server to listen on (default: :8000)
     --redis       ADDR   Address to your redis server (default: :6379)
+    --redis-username USER Redis ACL username (optional)
+    --redis-password PASS Redis password (optional)
     --max-retries N      Max connection retries on startup (default: 10)
     --retry-delay MS     Delay between retries in milliseconds (default: 1000)
     --help               Prints this message
 
 ENVIRONMENT VARIABLES:
     REDIS_ADDR     Redis server address (alternative to --redis)
+    REDIS_USERNAME Redis ACL username (alternative to --redis-username)
+    REDIS_PASSWORD Redis password (alternative to --redis-password)
     UPSTASH_ADDR   Webserver address (alternative to --addr)
     UPSTASH_TOKEN  API token (alternative to --token)
 ```

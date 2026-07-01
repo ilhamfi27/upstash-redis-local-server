@@ -117,6 +117,20 @@ These are the questions developers ask most often when getting started with Upst
   The only requirement is consistency: whatever value you pass at startup, use the same value as `UPSTASH_REDIS_REST_TOKEN` in your application. Your Upstash cloud token is a different credential entirely and should never be used locally.
 </Accordion>
 
+<Accordion title="Does it support Redis AUTH / a Redis password?">
+  Yes — this is a separate credential from the `UPSTASH_TOKEN` above. `UPSTASH_TOKEN` authenticates your application to the Upstash Redis Local **server**; `REDIS_USERNAME`/`REDIS_PASSWORD` authenticate the **server** to your upstream Redis instance.
+
+  Set them via environment variables or the equivalent flags:
+
+  ```bash
+  REDIS_PASSWORD=my-redis-password ./bin/upstash-redis-local --redis localhost:6379
+  # or, for ACL users:
+  REDIS_USERNAME=myuser REDIS_PASSWORD=my-redis-password ./bin/upstash-redis-local --redis localhost:6379
+  ```
+
+  See the [Environment Variables](/configuration/environment-variables) reference for details.
+</Accordion>
+
 ---
 
 ## Monitoring & debugging

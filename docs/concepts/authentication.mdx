@@ -125,6 +125,10 @@ No partial data is returned. The server closes the request immediately without e
 
 ## Dynamic token issuance
 
+<Note>
+  The `redis-acl-username`/`redis-acl-password` pair below is a **per-request** credential that `ACL RESTTOKEN` validates against Redis to mint a REST token — it is unrelated to `REDIS_USERNAME`/`REDIS_PASSWORD`, which are the **static** credentials the server itself uses to open its one connection pool to Redis at startup. See [Environment Variables](/configuration/environment-variables) for the latter.
+</Note>
+
 The server supports the `ACL RESTTOKEN` command, which lets you mint a new REST token at runtime that maps to an existing Redis ACL user. This is useful when your Redis instance has multiple ACL users and you want each one to have its own REST token:
 
 ```bash

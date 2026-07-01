@@ -22,6 +22,16 @@ These flags control the network addresses the server listens on and how it conne
   on a non-standard port. Maps to `REDIS_ADDR`.
 </ParamField>
 
+<ParamField path="--redis-username" type="string" default="">
+  ACL username for the upstream Redis server. Only applied when
+  `--redis-password` is also set. Maps to `REDIS_USERNAME`.
+</ParamField>
+
+<ParamField path="--redis-password" type="string" default="">
+  Password for the upstream Redis server. Leave unset if Redis does not
+  require authentication. Maps to `REDIS_PASSWORD`.
+</ParamField>
+
 <ParamField path="--max-retries" type="integer" default="10">
   Maximum number of times the server retries connecting to Redis on startup
   before exiting with an error. Increase this when Redis takes a few seconds to

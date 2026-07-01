@@ -24,6 +24,8 @@ Upstash Redis Local uses two distinct sets of variable names that serve differen
 |---|---|---|
 | `UPSTASH_ADDR` | `--addr` | Address the REST server listens on |
 | `REDIS_ADDR` | `--redis` | Address of the upstream Redis server |
+| `REDIS_USERNAME` | `--redis-username` | ACL username for the upstream Redis server |
+| `REDIS_PASSWORD` | `--redis-password` | Password for the upstream Redis server |
 | `UPSTASH_TOKEN` | `--token` | Read-write API token |
 | `UPSTASH_READONLY_TOKEN` | `--readonly-token` | Read-only API token |
 | `UPSTASH_MAX_RETRIES` | `--max-retries` | Max connection retries on startup |
@@ -69,6 +71,8 @@ UPSTASH_TOKEN=local-dev-token
 UPSTASH_READONLY_TOKEN=local-readonly-token
 UPSTASH_ADDR=:8000
 REDIS_ADDR=:6379
+# REDIS_USERNAME=default
+# REDIS_PASSWORD=your-redis-password
 
 # Startup retry behaviour (useful when Redis is slow to start)
 UPSTASH_MAX_RETRIES=10
@@ -131,6 +135,17 @@ UPSTASH_RETRY_DELAY=1000
   The `host:port` of the upstream Redis server. Change this when Redis is
   running on a non-standard port or inside a Docker network (e.g.
   `redis:6379`).
+</ParamField>
+
+<ParamField path="REDIS_USERNAME" type="string" default="">
+  ACL username used to authenticate with the upstream Redis server. Only
+  applied when `REDIS_PASSWORD` is also set — Redis's `AUTH` command requires
+  a password, with the username being optional (ACL-style `AUTH user pass`).
+</ParamField>
+
+<ParamField path="REDIS_PASSWORD" type="string" default="">
+  Password used to authenticate with the upstream Redis server. Leave unset
+  if your Redis instance does not require authentication.
 </ParamField>
 
 <ParamField path="UPSTASH_MAX_RETRIES" type="integer" default="10">
